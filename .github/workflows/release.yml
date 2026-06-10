@@ -29,7 +29,7 @@ jobs:
           else
             latest=$(git tag -l 'v*' --sort=-v:refname | head -n1)
             if [ -z "$latest" ]; then
-              version="1.0.0"
+              version=$(jq -r '.version' manifest.json)
             else
               base="${latest#v}"
               IFS='.' read -r major minor patch <<< "$base"
@@ -42,7 +42,9 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add manifest.json
-            git commit -m "chore: bump version to ${version} [skip ci]"
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: bump version to ${version} [skip ci]"
+            fi
             git tag "$tag"
             git push origin HEAD:main --tags
           fi
