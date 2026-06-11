@@ -31,10 +31,11 @@ type AgentSeasonsResponse struct {
 }
 
 type AgentSeason struct {
-	SeasonNumber int    `json:"season_number"`
-	Name         string `json:"name"`
-	EpisodeCount int    `json:"episode_count"`
-	PosterURL    string `json:"poster_url"`
+	CompetitionSeasonID string `json:"competition_season_id"`
+	SeasonNumber        int    `json:"season_number"`
+	Name                string `json:"name"`
+	EpisodeCount        int    `json:"episode_count"`
+	PosterURL           string `json:"poster_url"`
 }
 
 // AgentEpisodesResponse is returned by
@@ -64,4 +65,19 @@ type AgentEpisodeResponse struct {
 	DurationMinutes int    `json:"duration_minutes"`
 	ThumbURL        string `json:"thumb_url"`
 	PartName        string `json:"part_name"`
+}
+
+// EntityImageResponse is returned by GET /api/v1/images/entity/{type}/{id}.
+type EntityImageResponse struct {
+	Images []EntityImage `json:"images"`
+}
+
+type EntityImage struct {
+	ID        string `json:"id"`
+	ImageType string `json:"image_type"`
+	URL       string `json:"url"`
+	Width     *int   `json:"width"`
+	Height    *int   `json:"height"`
+	IsPrimary bool   `json:"is_primary"`
+	Priority  int    `json:"priority"`
 }
