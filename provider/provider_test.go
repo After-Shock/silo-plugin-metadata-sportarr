@@ -83,6 +83,14 @@ func TestGetMetadata(t *testing.T) {
 					{SeasonNumber: 2024, Name: "2024"},
 				},
 			})
+		case "/api/v1/images/entity/league/league-1":
+			json.NewEncoder(w).Encode(EntityImageResponse{
+				Images: []EntityImage{
+					{ID: "p1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/p1", IsPrimary: true},
+					{ID: "b1", ImageType: "backdrop", URL: "https://sportarr.net/api/v1/images/b1", IsPrimary: true},
+					{ID: "l1", ImageType: "logo", URL: "https://sportarr.net/api/v1/images/l1"},
+				},
+			})
 		default:
 			w.WriteHeader(404)
 		}
@@ -106,6 +114,15 @@ func TestGetMetadata(t *testing.T) {
 	}
 	if len(result.Genres) != 1 || result.Genres[0] != "Motorsport" {
 		t.Errorf("unexpected genres: %v", result.Genres)
+	}
+	if result.PosterPath != "https://sportarr.net/api/v1/images/p1" {
+		t.Errorf("expected poster path from entity images, got %s", result.PosterPath)
+	}
+	if result.BackdropPath != "https://sportarr.net/api/v1/images/b1" {
+		t.Errorf("expected backdrop path from entity images, got %s", result.BackdropPath)
+	}
+	if result.LogoPath != "https://sportarr.net/api/v1/images/l1" {
+		t.Errorf("expected logo path from entity images, got %s", result.LogoPath)
 	}
 }
 

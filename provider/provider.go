@@ -163,8 +163,6 @@ func (p *Provider) GetMetadata(ctx context.Context, req metadata.MetadataRequest
 		Year:          series.Year,
 		ContentRating: series.ContentRating,
 		ProviderIDs:   map[string]string{"sportarr": sportarrID},
-		PosterPath:    series.PosterURL,
-		BackdropPath:  series.FanartURL,
 	}
 
 	result.Genres = append(result.Genres, series.Genres...)
@@ -175,6 +173,13 @@ func (p *Provider) GetMetadata(ctx context.Context, req metadata.MetadataRequest
 	seasons, err := p.client.GetSeasons(ctx, sportarrID)
 	if err == nil && seasons != nil {
 		result.SeasonCount = len(seasons.Seasons)
+	}
+
+	imgs, err := p.client.GetEntityImages(ctx, "league", sportarrID)
+	if err == nil {
+		result.PosterPath = pickPrimaryURL(imgs.Images, "poster")
+		result.BackdropPath = pickPrimaryURL(imgs.Images, "backdrop")
+		result.LogoPath = pickPrimaryURL(imgs.Images, "logo")
 	}
 
 	return result, nil
