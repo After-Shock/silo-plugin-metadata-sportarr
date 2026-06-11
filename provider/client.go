@@ -163,3 +163,40 @@ func (c *Client) GetEntityImages(ctx context.Context, entityType, entityID strin
 	}
 	return &resp, nil
 }
+
+func (c *Client) GetEntityImagesBatch(ctx context.Context, entityType string, entityIDs []string) map[string]*EntityImageResponse {
+	type result struct {
+		id   string
+		resp *EntityImageResponse
+	}
+
+	seen := make(map[string]struct{}, len(entityIDs))
+	var unique []string
+	for _, id := range entityIDs {
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			unique = append(unique, id)
+		}
+	}
+
+	ch := make(chan result, len(unique))
+	for _, id := range unique {
+		go func(eid string) {
+			resp, err := c.GetEntityImages(ctx, entityType, eid)
+			if err != nil {
+				ch <- result{id: eid}
+				return
+			}
+			ch <- result{id: eid, resp: resp}
+		}(id)
+	}
+
+	out := make(map[string]*EntityImageResponse, len(unique))
+	for range unique {
+		r := <-ch
+		if r.resp != nil {
+			out[r.id] = r.resp
+		}
+	}
+	return out
+}

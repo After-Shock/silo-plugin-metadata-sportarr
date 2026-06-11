@@ -208,3 +208,68 @@ func TestGetEntityImagesParsesResponse(t *testing.T) {
 		t.Errorf("unexpected URL: %s", resp.Images[1].URL)
 	}
 }
+
+func TestGetEntityImagesBatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/images/entity/season/s1":
+			json.NewEncoder(w).Encode(EntityImageResponse{
+				Images: []EntityImage{{ID: "img-s1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-s1"}},
+			})
+		case "/api/v1/images/entity/season/s2":
+			json.NewEncoder(w).Encode(EntityImageResponse{
+				Images: []EntityImage{{ID: "img-s2", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-s2"}},
+			})
+		default:
+			w.WriteHeader(404)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(100)
+	c.SetBaseURL(srv.URL)
+
+	result := c.GetEntityImagesBatch(context.Background(), "season", []string{"s1", "s2", "s1"})
+	if len(result) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(result))
+	}
+	if result["s1"].Images[0].ID != "img-s1" {
+		t.Errorf("expected img-s1, got %s", result["s1"].Images[0].ID)
+	}
+	if result["s2"].Images[0].ID != "img-s2" {
+		t.Errorf("expected img-s2, got %s", result["s2"].Images[0].ID)
+	}
+}
+
+func TestGetEntityImagesBatchPartialFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/images/entity/season/s1":
+			json.NewEncoder(w).Encode(EntityImageResponse{
+				Images: []EntityImage{{ID: "img-s1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-s1"}},
+			})
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	c := NewClient(100)
+	c.SetBaseURL(srv.URL)
+
+	result := c.GetEntityImagesBatch(context.Background(), "season", []string{"s1", "bad-id"})
+	if len(result) != 1 {
+		t.Fatalf("expected 1 entry (bad-id should be skipped), got %d", len(result))
+	}
+	if _, ok := result["s1"]; !ok {
+		t.Error("expected s1 in results")
+	}
+}
+
+func TestGetEntityImagesBatchEmpty(t *testing.T) {
+	c := NewClient(100)
+	result := c.GetEntityImagesBatch(context.Background(), "season", nil)
+	if len(result) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(result))
+	}
+}

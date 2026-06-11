@@ -196,14 +196,19 @@ func (p *Provider) GetSeasons(ctx context.Context, req metadata.SeasonsRequest) 
 		return nil, err
 	}
 
+	var seasonIDs []string
+	for _, s := range resp.Seasons {
+		if s.CompetitionSeasonID != "" {
+			seasonIDs = append(seasonIDs, s.CompetitionSeasonID)
+		}
+	}
+	imagesByID := p.client.GetEntityImagesBatch(ctx, "season", seasonIDs)
+
 	seasons := make([]metadata.SeasonResult, 0, len(resp.Seasons))
 	for _, s := range resp.Seasons {
 		posterPath := ""
-		if s.CompetitionSeasonID != "" {
-			imgs, err := p.client.GetEntityImages(ctx, "season", s.CompetitionSeasonID)
-			if err == nil {
-				posterPath = pickPrimaryURL(imgs.Images, "poster")
-			}
+		if imgs, ok := imagesByID[s.CompetitionSeasonID]; ok {
+			posterPath = pickPrimaryURL(imgs.Images, "poster")
 		}
 		seasons = append(seasons, metadata.SeasonResult{
 			ContentID:    fmt.Sprintf("%s:%d", sportarrID, s.SeasonNumber),
