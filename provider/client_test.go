@@ -157,3 +157,55 @@ func TestNoCacheHeaders(t *testing.T) {
 	c.SetBaseURL(srv.URL)
 	c.Search(context.Background(), "test")
 }
+
+func TestGetEntityImagesParsesResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/images/entity/league/abc-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.URL.Query().Get("completed_only") != "true" {
+			t.Errorf("expected completed_only=true, got %s", r.URL.Query().Get("completed_only"))
+		}
+		json.NewEncoder(w).Encode(EntityImageResponse{
+			Images: []EntityImage{
+				{
+					ID:        "img-1",
+					ImageType: "poster",
+					URL:       "https://sportarr.net/api/v1/images/img-1",
+					IsPrimary: true,
+					Priority:  10,
+				},
+				{
+					ID:        "img-2",
+					ImageType: "backdrop",
+					URL:       "https://sportarr.net/api/v1/images/img-2",
+					Priority:  5,
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(10)
+	c.SetBaseURL(srv.URL)
+
+	resp, err := c.GetEntityImages(context.Background(), "league", "abc-123")
+	if err != nil {
+		t.Fatalf("get entity images failed: %v", err)
+	}
+	if len(resp.Images) != 2 {
+		t.Fatalf("expected 2 images, got %d", len(resp.Images))
+	}
+	if resp.Images[0].ID != "img-1" {
+		t.Errorf("expected ID img-1, got %s", resp.Images[0].ID)
+	}
+	if resp.Images[0].ImageType != "poster" {
+		t.Errorf("expected image_type poster, got %s", resp.Images[0].ImageType)
+	}
+	if !resp.Images[0].IsPrimary {
+		t.Errorf("expected is_primary=true")
+	}
+	if resp.Images[1].URL != "https://sportarr.net/api/v1/images/img-2" {
+		t.Errorf("unexpected URL: %s", resp.Images[1].URL)
+	}
+}

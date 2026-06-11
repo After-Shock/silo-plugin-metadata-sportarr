@@ -163,3 +163,12 @@ func (c *Client) GetEpisode(ctx context.Context, eventID string) (*AgentEpisodeR
 	}
 	return &resp, nil
 }
+
+func (c *Client) GetEntityImages(ctx context.Context, entityType, entityID string) (*EntityImageResponse, error) {
+	path := "/api/v1/images/entity/" + entityType + "/" + url.PathEscape(entityID) + "?completed_only=true"
+	var resp EntityImageResponse
+	if err := c.doGet(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
