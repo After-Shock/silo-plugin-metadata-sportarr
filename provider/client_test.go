@@ -54,7 +54,6 @@ func TestGetSeriesParsesResponse(t *testing.T) {
 			Genres:    []string{"American Football", "Sports"},
 			Studio:    "NFL",
 			PosterURL: "https://sportarr.net/img/nfl-poster.jpg",
-			FanartURL: "https://sportarr.net/img/nfl-fanart.jpg",
 		})
 	}))
 	defer srv.Close()

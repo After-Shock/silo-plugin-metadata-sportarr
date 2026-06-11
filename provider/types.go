@@ -20,9 +20,7 @@ type AgentSeriesResponse struct {
 	Year          int      `json:"year"`
 	Genres        []string `json:"genres"`
 	Studio        string   `json:"studio"`
-	PosterURL     string   `json:"poster_url"`
-	BannerURL     string   `json:"banner_url"`
-	FanartURL     string   `json:"fanart_url"`
+	PosterURL string `json:"poster_url"`
 }
 
 // AgentSeasonsResponse is returned by GET /api/metadata/agents/series/{league_id}/seasons.
@@ -35,7 +33,6 @@ type AgentSeason struct {
 	SeasonNumber        int    `json:"season_number"`
 	Name                string `json:"name"`
 	EpisodeCount        int    `json:"episode_count"`
-	PosterURL           string `json:"poster_url"`
 }
 
 // AgentEpisodesResponse is returned by
