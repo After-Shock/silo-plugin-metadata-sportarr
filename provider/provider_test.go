@@ -176,6 +176,35 @@ func TestGetSeasons(t *testing.T) {
 	}
 }
 
+func TestGetSeasonsWithoutCompetitionSeasonID(t *testing.T) {
+	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/metadata/agents/series/league-1/seasons":
+			json.NewEncoder(w).Encode(AgentSeasonsResponse{
+				Seasons: []AgentSeason{
+					{SeasonNumber: 2023, Name: "2023 Season"},
+				},
+			})
+		default:
+			t.Errorf("unexpected request to %s (should not call entity image API)", r.URL.Path)
+			w.WriteHeader(404)
+		}
+	}))
+
+	seasons, err := p.GetSeasons(context.Background(), metadata.SeasonsRequest{
+		ProviderIDs: map[string]string{"sportarr": "league-1"},
+	})
+	if err != nil {
+		t.Fatalf("get seasons failed: %v", err)
+	}
+	if len(seasons) != 1 {
+		t.Fatalf("expected 1 season, got %d", len(seasons))
+	}
+	if seasons[0].PosterPath != "" {
+		t.Errorf("expected empty poster path when no CompetitionSeasonID, got %s", seasons[0].PosterPath)
+	}
+}
+
 func TestGetEpisodes(t *testing.T) {
 	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(AgentEpisodesResponse{
