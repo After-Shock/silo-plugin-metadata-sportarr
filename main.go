@@ -243,8 +243,10 @@ func (s *metadataServer) GetImages(ctx context.Context, req *pluginv1.GetImagesR
 			kind = "banner"
 		}
 		response.Images = append(response.Images, &pluginv1.ImageRecord{
-			Kind: kind,
-			Url:  sportarrCanonicalPath(s.runtime.baseURL, img.URL),
+			Kind:   kind,
+			Url:    sportarrCanonicalPath(s.runtime.baseURL, img.URL),
+			Width:  int32(img.Width),
+			Height: int32(img.Height),
 		})
 	}
 	return response, nil

@@ -21,8 +21,6 @@ type AgentSeriesResponse struct {
 	Genres        []string `json:"genres"`
 	Studio        string   `json:"studio"`
 	PosterURL     string   `json:"poster_url"`
-	BannerURL     string   `json:"banner_url"`
-	FanartURL     string   `json:"fanart_url"`
 }
 
 // AgentSeasonsResponse is returned by GET /api/metadata/agents/series/{league_id}/seasons.
@@ -31,10 +29,10 @@ type AgentSeasonsResponse struct {
 }
 
 type AgentSeason struct {
-	SeasonNumber int    `json:"season_number"`
-	Name         string `json:"name"`
-	EpisodeCount int    `json:"episode_count"`
-	PosterURL    string `json:"poster_url"`
+	CompetitionSeasonID string `json:"competition_season_id"`
+	SeasonNumber        int    `json:"season_number"`
+	Name                string `json:"name"`
+	EpisodeCount        int    `json:"episode_count"`
 }
 
 // AgentEpisodesResponse is returned by
@@ -55,13 +53,17 @@ type AgentEpisode struct {
 	PartName        string `json:"part_name"`
 }
 
-// AgentEpisodeResponse is returned by GET /api/metadata/agents/episode/{event_id}.
-type AgentEpisodeResponse struct {
-	ID              string `json:"id"`
-	Title           string `json:"title"`
-	Summary         string `json:"summary"`
-	AirDate         string `json:"air_date"`
-	DurationMinutes int    `json:"duration_minutes"`
-	ThumbURL        string `json:"thumb_url"`
-	PartName        string `json:"part_name"`
+// EntityImageResponse is returned by GET /api/v1/images/entity/{type}/{id}.
+type EntityImageResponse struct {
+	Images []EntityImage `json:"images"`
+}
+
+type EntityImage struct {
+	ID        string `json:"id"`
+	ImageType string `json:"image_type"`
+	URL       string `json:"url"`
+	Width     *int   `json:"width"`
+	Height    *int   `json:"height"`
+	IsPrimary bool   `json:"is_primary"`
+	Priority  int    `json:"priority"`
 }

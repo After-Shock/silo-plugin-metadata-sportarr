@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/Silo-Server/silo-plugin-sportarr/metadata"
 )
@@ -26,6 +27,77 @@ func NewProviderWithClient(c *Client) *Provider {
 func (p *Provider) Slug() string       { return "sportarr" }
 func (p *Provider) Name() string       { return "Sportarr" }
 func (p *Provider) ForTypes() []string { return []string{"series"} }
+
+func mapImageType(t string) (metadata.ImageType, bool) {
+	switch t {
+	case "poster":
+		return metadata.ImagePoster, true
+	case "backdrop":
+		return metadata.ImageBackdrop, true
+	case "logo":
+		return metadata.ImageLogo, true
+	case "banner":
+		return metadata.ImageBanner, true
+	case "thumbnail":
+		return metadata.ImageStill, true
+	default:
+		return 0, false
+	}
+}
+
+func pickPrimaryURL(images []EntityImage, imageType string) string {
+	var best *EntityImage
+	for i := range images {
+		img := &images[i]
+		if img.ImageType != imageType {
+			continue
+		}
+		if best == nil {
+			best = img
+			continue
+		}
+		if img.IsPrimary && !best.IsPrimary {
+			best = img
+		} else if img.IsPrimary == best.IsPrimary && img.Priority > best.Priority {
+			best = img
+		}
+	}
+	if best == nil {
+		return ""
+	}
+	return best.URL
+}
+
+func entityImagesToRemote(images []EntityImage) []metadata.RemoteImage {
+	sorted := make([]EntityImage, len(images))
+	copy(sorted, images)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		if sorted[i].IsPrimary != sorted[j].IsPrimary {
+			return sorted[i].IsPrimary
+		}
+		return sorted[i].Priority > sorted[j].Priority
+	})
+
+	var out []metadata.RemoteImage
+	for _, img := range sorted {
+		imgType, ok := mapImageType(img.ImageType)
+		if !ok {
+			continue
+		}
+		ri := metadata.RemoteImage{
+			URL:  img.URL,
+			Type: imgType,
+		}
+		if img.Width != nil {
+			ri.Width = *img.Width
+		}
+		if img.Height != nil {
+			ri.Height = *img.Height
+		}
+		out = append(out, ri)
+	}
+	return out
+}
 
 func (p *Provider) Search(ctx context.Context, query metadata.SearchQuery) ([]metadata.SearchResult, error) {
 	if sportarrID := query.ProviderIDs["sportarr"]; sportarrID != "" {
@@ -91,8 +163,6 @@ func (p *Provider) GetMetadata(ctx context.Context, req metadata.MetadataRequest
 		Year:          series.Year,
 		ContentRating: series.ContentRating,
 		ProviderIDs:   map[string]string{"sportarr": sportarrID},
-		PosterPath:    series.PosterURL,
-		BackdropPath:  series.FanartURL,
 	}
 
 	result.Genres = append(result.Genres, series.Genres...)
@@ -103,6 +173,13 @@ func (p *Provider) GetMetadata(ctx context.Context, req metadata.MetadataRequest
 	seasons, err := p.client.GetSeasons(ctx, sportarrID)
 	if err == nil && seasons != nil {
 		result.SeasonCount = len(seasons.Seasons)
+	}
+
+	imgs, err := p.client.GetEntityImages(ctx, "league", sportarrID)
+	if err == nil {
+		result.PosterPath = pickPrimaryURL(imgs.Images, "poster")
+		result.BackdropPath = pickPrimaryURL(imgs.Images, "backdrop")
+		result.LogoPath = pickPrimaryURL(imgs.Images, "logo")
 	}
 
 	return result, nil
@@ -119,13 +196,25 @@ func (p *Provider) GetSeasons(ctx context.Context, req metadata.SeasonsRequest) 
 		return nil, err
 	}
 
+	var seasonIDs []string
+	for _, s := range resp.Seasons {
+		if s.CompetitionSeasonID != "" {
+			seasonIDs = append(seasonIDs, s.CompetitionSeasonID)
+		}
+	}
+	imagesByID := p.client.GetEntityImagesBatch(ctx, "season", seasonIDs)
+
 	seasons := make([]metadata.SeasonResult, 0, len(resp.Seasons))
 	for _, s := range resp.Seasons {
+		posterPath := ""
+		if imgs, ok := imagesByID[s.CompetitionSeasonID]; ok {
+			posterPath = pickPrimaryURL(imgs.Images, "poster")
+		}
 		seasons = append(seasons, metadata.SeasonResult{
 			ContentID:    fmt.Sprintf("%s:%d", sportarrID, s.SeasonNumber),
 			SeasonNumber: s.SeasonNumber,
 			Title:        s.Name,
-			PosterPath:   s.PosterURL,
+			PosterPath:   posterPath,
 		})
 	}
 	return seasons, nil
@@ -166,56 +255,22 @@ func (p *Provider) GetImages(ctx context.Context, req metadata.ImageRequest) ([]
 		return nil, nil
 	}
 
+	var entityType string
 	switch req.ContentType {
 	case "series":
-		return p.getSeriesImages(ctx, sportarrID)
+		entityType = "league"
+	case "season":
+		entityType = "season"
 	case "episode":
-		return p.getEpisodeImages(ctx, sportarrID)
+		entityType = "event"
+	default:
+		return nil, nil
 	}
-	return nil, nil
-}
 
-func (p *Provider) getSeriesImages(ctx context.Context, leagueID string) ([]metadata.RemoteImage, error) {
-	series, err := p.client.GetSeries(ctx, leagueID)
+	resp, err := p.client.GetEntityImages(ctx, entityType, sportarrID)
 	if err != nil {
 		return nil, err
 	}
-
-	var images []metadata.RemoteImage
-	if series.PosterURL != "" {
-		images = append(images, metadata.RemoteImage{
-			URL:  series.PosterURL,
-			Type: metadata.ImagePoster,
-		})
-	}
-	if series.FanartURL != "" {
-		images = append(images, metadata.RemoteImage{
-			URL:  series.FanartURL,
-			Type: metadata.ImageBackdrop,
-		})
-	}
-	if series.BannerURL != "" {
-		images = append(images, metadata.RemoteImage{
-			URL:  series.BannerURL,
-			Type: metadata.ImageBanner,
-		})
-	}
-	return images, nil
-}
-
-func (p *Provider) getEpisodeImages(ctx context.Context, eventID string) ([]metadata.RemoteImage, error) {
-	ep, err := p.client.GetEpisode(ctx, eventID)
-	if err != nil {
-		return nil, err
-	}
-
-	var images []metadata.RemoteImage
-	if ep.ThumbURL != "" {
-		images = append(images, metadata.RemoteImage{
-			URL:  ep.ThumbURL,
-			Type: metadata.ImageStill,
-		})
-	}
-	return images, nil
+	return entityImagesToRemote(resp.Images), nil
 }
 
