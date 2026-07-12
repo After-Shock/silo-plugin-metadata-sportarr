@@ -154,14 +154,16 @@ func TestGetSeriesParsesResponse(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/series/abc-123" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentSeriesResponse{
+		if err := json.NewEncoder(w).Encode(AgentSeriesResponse{
 			Title:     "NFL Football",
 			Summary:   "American football league",
 			Year:      1920,
 			Genres:    []string{"American Football", "Sports"},
 			Studio:    "NFL",
 			PosterURL: "https://sportarr.net/img/nfl-poster.jpg",
-		})
+		}); err != nil {
+			t.Errorf("encode series response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -185,7 +187,7 @@ func TestGetSeasonEpisodesParsesResponse(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/series/abc-123/season/2024/episodes" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentEpisodesResponse{
+		if err := json.NewEncoder(w).Encode(AgentEpisodesResponse{
 			Episodes: []AgentEpisode{
 				{
 					ID:              "evt-001",
@@ -196,7 +198,9 @@ func TestGetSeasonEpisodesParsesResponse(t *testing.T) {
 					DurationMinutes: 240,
 				},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode episodes response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -226,9 +230,11 @@ func TestRetryOn5xx(t *testing.T) {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		json.NewEncoder(w).Encode(AgentSearchResponse{
+		if err := json.NewEncoder(w).Encode(AgentSearchResponse{
 			Results: []AgentSearchResult{{ID: "ok", Title: "OK"}},
-		})
+		}); err != nil {
+			t.Errorf("encode retry response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -255,7 +261,9 @@ func TestNoCacheHeaders(t *testing.T) {
 		if r.Header.Get("Pragma") != "no-cache" {
 			t.Errorf("missing Pragma header")
 		}
-		json.NewEncoder(w).Encode(AgentSearchResponse{})
+		if err := json.NewEncoder(w).Encode(AgentSearchResponse{}); err != nil {
+			t.Errorf("encode no-cache response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -274,7 +282,7 @@ func TestGetEntityImagesParsesResponse(t *testing.T) {
 		if r.URL.Query().Get("completed_only") != "true" {
 			t.Errorf("expected completed_only=true, got %s", r.URL.Query().Get("completed_only"))
 		}
-		json.NewEncoder(w).Encode(EntityImageResponse{
+		if err := json.NewEncoder(w).Encode(EntityImageResponse{
 			Images: []EntityImage{
 				{
 					ID:        "img-1",
@@ -290,7 +298,9 @@ func TestGetEntityImagesParsesResponse(t *testing.T) {
 					Priority:  5,
 				},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode entity images response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -322,13 +332,17 @@ func TestGetEntityImagesBatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/images/entity/season/s1":
-			json.NewEncoder(w).Encode(EntityImageResponse{
+			if err := json.NewEncoder(w).Encode(EntityImageResponse{
 				Images: []EntityImage{{ID: "img-s1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-s1"}},
-			})
+			}); err != nil {
+				t.Errorf("encode season s1 images response: %v", err)
+			}
 		case "/api/v1/images/entity/season/s2":
-			json.NewEncoder(w).Encode(EntityImageResponse{
+			if err := json.NewEncoder(w).Encode(EntityImageResponse{
 				Images: []EntityImage{{ID: "img-s2", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-s2"}},
-			})
+			}); err != nil {
+				t.Errorf("encode season s2 images response: %v", err)
+			}
 		default:
 			w.WriteHeader(404)
 		}
@@ -354,9 +368,11 @@ func TestGetEntityImagesBatchPartialFailure(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/v1/images/entity/season/s1":
-			json.NewEncoder(w).Encode(EntityImageResponse{
+			if err := json.NewEncoder(w).Encode(EntityImageResponse{
 				Images: []EntityImage{{ID: "img-s1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-s1"}},
-			})
+			}); err != nil {
+				t.Errorf("encode partial batch images response: %v", err)
+			}
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}

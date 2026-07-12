@@ -10,6 +10,13 @@ import (
 	"github.com/Silo-Server/silo-plugin-sportarr/metadata"
 )
 
+func encodeJSON(t *testing.T, w http.ResponseWriter, value any) {
+	t.Helper()
+	if err := json.NewEncoder(w).Encode(value); err != nil {
+		t.Errorf("encode response: %v", err)
+	}
+}
+
 func newTestProvider(t *testing.T, handler http.Handler) *Provider {
 	t.Helper()
 	srv := httptest.NewServer(handler)
@@ -21,7 +28,7 @@ func newTestProvider(t *testing.T, handler http.Handler) *Provider {
 
 func TestSearchByTitle(t *testing.T) {
 	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(AgentSearchResponse{
+		encodeJSON(t, w, AgentSearchResponse{
 			Results: []AgentSearchResult{
 				{ID: "league-1", Title: "Premier League", Year: 1992},
 				{ID: "league-2", Title: "Premier League 2", Year: 2023},
@@ -46,7 +53,7 @@ func TestSearchByProviderID(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/series/league-1" {
 			t.Errorf("expected series lookup, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentSeriesResponse{
+		encodeJSON(t, w, AgentSeriesResponse{
 			Title: "UFC", Year: 1993, Summary: "MMA league",
 		})
 	}))
@@ -69,7 +76,7 @@ func TestGetMetadata(t *testing.T) {
 	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/metadata/agents/series/league-1":
-			json.NewEncoder(w).Encode(AgentSeriesResponse{
+			encodeJSON(t, w, AgentSeriesResponse{
 				Title:   "Formula 1",
 				Summary: "Open-wheel racing",
 				Year:    1950,
@@ -77,14 +84,14 @@ func TestGetMetadata(t *testing.T) {
 				Studio:  "FIA",
 			})
 		case "/api/metadata/agents/series/league-1/seasons":
-			json.NewEncoder(w).Encode(AgentSeasonsResponse{
+			encodeJSON(t, w, AgentSeasonsResponse{
 				Seasons: []AgentSeason{
 					{SeasonNumber: 2023, Name: "2023"},
 					{SeasonNumber: 2024, Name: "2024"},
 				},
 			})
 		case "/api/v1/images/entity/league/league-1":
-			json.NewEncoder(w).Encode(EntityImageResponse{
+			encodeJSON(t, w, EntityImageResponse{
 				Images: []EntityImage{
 					{ID: "p1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/p1", IsPrimary: true},
 					{ID: "b1", ImageType: "backdrop", URL: "https://sportarr.net/api/v1/images/b1", IsPrimary: true},
@@ -130,20 +137,20 @@ func TestGetSeasons(t *testing.T) {
 	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/metadata/agents/series/league-1/seasons":
-			json.NewEncoder(w).Encode(AgentSeasonsResponse{
+			encodeJSON(t, w, AgentSeasonsResponse{
 				Seasons: []AgentSeason{
 					{CompetitionSeasonID: "cs-2023", SeasonNumber: 2023, Name: "2023 Season", EpisodeCount: 23},
 					{CompetitionSeasonID: "cs-2024", SeasonNumber: 2024, Name: "2024 Season", EpisodeCount: 24},
 				},
 			})
 		case "/api/v1/images/entity/season/cs-2023":
-			json.NewEncoder(w).Encode(EntityImageResponse{
+			encodeJSON(t, w, EntityImageResponse{
 				Images: []EntityImage{
 					{ID: "sp1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/sp1", IsPrimary: true},
 				},
 			})
 		case "/api/v1/images/entity/season/cs-2024":
-			json.NewEncoder(w).Encode(EntityImageResponse{
+			encodeJSON(t, w, EntityImageResponse{
 				Images: []EntityImage{
 					{ID: "sp2", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/sp2"},
 				},
@@ -180,7 +187,7 @@ func TestGetSeasonsWithoutCompetitionSeasonID(t *testing.T) {
 	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/api/metadata/agents/series/league-1/seasons":
-			json.NewEncoder(w).Encode(AgentSeasonsResponse{
+			encodeJSON(t, w, AgentSeasonsResponse{
 				Seasons: []AgentSeason{
 					{SeasonNumber: 2023, Name: "2023 Season"},
 				},
@@ -207,7 +214,7 @@ func TestGetSeasonsWithoutCompetitionSeasonID(t *testing.T) {
 
 func TestGetEpisodes(t *testing.T) {
 	p := newTestProvider(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(AgentEpisodesResponse{
+		encodeJSON(t, w, AgentEpisodesResponse{
 			Episodes: []AgentEpisode{
 				{ID: "ev-1", Title: "Monaco GP", SeasonNumber: 2024, EpisodeNumber: 8, AirDate: "2024-05-26", DurationMinutes: 120},
 				{ID: "ev-2", Title: "Canadian GP", SeasonNumber: 2024, EpisodeNumber: 9, AirDate: "2024-06-09", DurationMinutes: 120},
@@ -240,7 +247,7 @@ func TestGetImagesForSeries(t *testing.T) {
 		}
 		w1, h1 := 680, 1000
 		w2, h2 := 1920, 1080
-		json.NewEncoder(w).Encode(EntityImageResponse{
+		encodeJSON(t, w, EntityImageResponse{
 			Images: []EntityImage{
 				{ID: "img-1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-1", IsPrimary: true, Width: &w1, Height: &h1},
 				{ID: "img-2", ImageType: "backdrop", URL: "https://sportarr.net/api/v1/images/img-2", Width: &w2, Height: &h2},
@@ -274,7 +281,7 @@ func TestGetImagesForEpisode(t *testing.T) {
 		if r.URL.Path != "/api/v1/images/entity/event/ev-1" {
 			t.Errorf("expected entity image path for event, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(EntityImageResponse{
+		encodeJSON(t, w, EntityImageResponse{
 			Images: []EntityImage{
 				{ID: "img-t1", ImageType: "thumbnail", URL: "https://sportarr.net/api/v1/images/img-t1"},
 			},
@@ -301,7 +308,7 @@ func TestGetImagesForSeason(t *testing.T) {
 		if r.URL.Path != "/api/v1/images/entity/season/season-uuid-1" {
 			t.Errorf("expected entity image path for season, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(EntityImageResponse{
+		encodeJSON(t, w, EntityImageResponse{
 			Images: []EntityImage{
 				{ID: "img-sp1", ImageType: "poster", URL: "https://sportarr.net/api/v1/images/img-sp1", IsPrimary: true},
 			},
@@ -525,7 +532,7 @@ func TestMovieSearchUsesMovieAgent(t *testing.T) {
 		if got := r.URL.Query().Get("year"); got != "2024" {
 			t.Errorf("year = %q, want 2024", got)
 		}
-		json.NewEncoder(w).Encode(AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{
+		encodeJSON(t, w, AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{
 			ID: "v1.event-key", Title: "UFC 300", Year: 2024, Summary: "A title fight card.", PosterURL: "https://sportarr.local/poster",
 		}}})
 	}))
@@ -549,7 +556,7 @@ func TestMovieSearchByProviderIDFetchesDetail(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/movies/v1.event-key" {
 			t.Errorf("expected Movie detail path, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentMovieResponse{
+		encodeJSON(t, w, AgentMovieResponse{
 			ID: "v1.event-key", Title: "UFC 300", Year: 2024, Summary: "A title fight card.", PosterURL: "https://sportarr.local/poster",
 		})
 	}))
@@ -579,7 +586,7 @@ func TestMovieSearchByProviderIDFallsBackToConservativeSearch(t *testing.T) {
 			if got := r.URL.Query().Get("year"); got != "2024" {
 				t.Errorf("fallback year = %q, want 2024", got)
 			}
-			json.NewEncoder(w).Encode(AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{ID: "v1.current-key", Title: "UFC 300", Year: 2024}}})
+			encodeJSON(t, w, AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{ID: "v1.current-key", Title: "UFC 300", Year: 2024}}})
 		default:
 			t.Errorf("unexpected Movie request: %s", r.URL.Path)
 			w.WriteHeader(http.StatusNotFound)
@@ -602,7 +609,7 @@ func TestGetMovieMetadataMapsReleaseDateAndTypedArtwork(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/movies/v1.event-key" {
 			t.Errorf("expected Movie detail path, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentMovieResponse{
+		encodeJSON(t, w, AgentMovieResponse{
 			ID:          "v1.event-key",
 			Title:       "UFC 300",
 			SortTitle:   "UFC 300",
@@ -649,7 +656,7 @@ func TestGetMovieImagesUsesDetailArtwork(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/movies/v1.event-key" {
 			t.Errorf("expected Movie detail path, got %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentMovieResponse{
+		encodeJSON(t, w, AgentMovieResponse{
 			PosterURL: "https://sportarr.local/poster", BackdropURL: "https://sportarr.local/backdrop", StillURL: "https://sportarr.local/still",
 		})
 	}))

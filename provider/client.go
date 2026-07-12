@@ -137,12 +137,12 @@ func (c *Client) doGet(ctx context.Context, path string, dest any) error {
 
 		if resp.StatusCode >= 400 {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return fmt.Errorf("sportarr: HTTP %d: %s", resp.StatusCode, string(body))
 		}
 
 		decodeErr := json.NewDecoder(io.LimitReader(resp.Body, maxResponseBody)).Decode(dest)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if decodeErr != nil {
 			return fmt.Errorf("sportarr: decode response: %w", decodeErr)
 		}
