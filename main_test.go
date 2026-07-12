@@ -94,6 +94,8 @@ func TestSportarrCanonicalPath(t *testing.T) {
 		{"full url", "https://sportarr.net", "https://sportarr.net/api/images/abc123", "sportarr:///api/images/abc123"},
 		{"same effective default port", "http://sportarr.local", "http://sportarr.local:80/api/images/abc123", "sportarr:///api/images/abc123"},
 		{"configured local URL", "http://sportarr.local:1867", "http://sportarr.local:1867/api/images/abc123", "sportarr:///api/images/abc123"},
+		{"relative Movie image path", "http://sportarr.local:1867", "/api/metadata/agents/movies/v1.ufc-300/images/poster", "sportarr:///api/metadata/agents/movies/v1.ufc-300/images/poster"},
+		{"scheme-relative host stays external", "http://sportarr.local:1867", "//example.com/api/images/abc123", "//example.com/api/images/abc123"},
 		{"near-prefix port stays external", "http://sportarr.local:1867", "http://sportarr.local:18670/api/images/abc123", "http://sportarr.local:18670/api/images/abc123"},
 		{"base path boundary", "http://sportarr.local:1867/sportarr", "http://sportarr.local:1867/sportarr/images/abc123", "sportarr:///images/abc123"},
 		{"near-prefix base path stays external", "http://sportarr.local:1867/sportarr", "http://sportarr.local:1867/sportarrx/images/abc123", "http://sportarr.local:1867/sportarrx/images/abc123"},
@@ -165,9 +167,9 @@ func TestMovieImageRPCUsesCanonicalConfiguredLocalURLs(t *testing.T) {
 			t.Errorf("Movie detail path = %q, want %q", got, want)
 		}
 		_ = json.NewEncoder(w).Encode(provider.AgentMovieResponse{
-			PosterURL:   srv.URL + "/api/metadata/agents/movies/v1.ufc-300/images/poster",
-			BackdropURL: srv.URL + "/api/metadata/agents/movies/v1.ufc-300/images/fanart",
-			StillURL:    srv.URL + "/api/metadata/agents/movies/v1.ufc-300/images/still",
+			PosterURL:   "/api/metadata/agents/movies/v1.ufc-300/images/poster",
+			BackdropURL: "/api/metadata/agents/movies/v1.ufc-300/images/fanart",
+			StillURL:    "/api/metadata/agents/movies/v1.ufc-300/images/still",
 		})
 	}))
 	defer srv.Close()

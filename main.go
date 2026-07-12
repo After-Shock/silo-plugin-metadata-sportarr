@@ -33,6 +33,9 @@ func sportarrCanonicalPath(baseURL, imageURL string) string {
 	if err != nil || base.Scheme == "" || base.Host == "" || base.User != nil {
 		return imageURL
 	}
+	if strings.HasPrefix(imageURL, "/") && !strings.HasPrefix(imageURL, "//") {
+		return "sportarr://" + imageURL
+	}
 	image, err := url.Parse(imageURL)
 	if err != nil || image.Scheme == "" || image.Host == "" || image.User != nil {
 		return imageURL
