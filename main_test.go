@@ -161,8 +161,7 @@ func TestMovieMetadataItemMapsReleaseDateAndCanonicalLocalImages(t *testing.T) {
 }
 
 func TestMovieImageRPCUsesCanonicalConfiguredLocalURLs(t *testing.T) {
-	var srv *httptest.Server
-	srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got, want := r.URL.Path, "/api/metadata/agents/movies/v1.ufc-300"; got != want {
 			t.Errorf("Movie detail path = %q, want %q", got, want)
 		}

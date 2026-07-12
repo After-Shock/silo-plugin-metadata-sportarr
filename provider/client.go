@@ -101,7 +101,7 @@ func (c *Client) doGet(ctx context.Context, path string, dest any) error {
 		}
 
 		if resp.StatusCode == http.StatusTooManyRequests {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if attempt < maxRetries {
 				backoff := retryAfterOrDefault(resp, attempt)
 				slog.Warn("sportarr: rate limited, backing off",
@@ -117,7 +117,7 @@ func (c *Client) doGet(ctx context.Context, path string, dest any) error {
 		}
 
 		if resp.StatusCode >= 500 {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if attempt < maxRetries {
 				backoff := time.Duration(1<<attempt) * time.Second
 				select {
@@ -131,7 +131,7 @@ func (c *Client) doGet(ctx context.Context, path string, dest any) error {
 		}
 
 		if resp.StatusCode == http.StatusNotFound {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return &ErrNotFound{URL: reqURL}
 		}
 

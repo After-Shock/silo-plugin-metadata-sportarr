@@ -20,7 +20,7 @@ func TestSearchMoviesEncodesTitleAndYear(t *testing.T) {
 		if got := r.URL.Query().Get("year"); got != "2024" {
 			t.Errorf("unexpected year query: %q", got)
 		}
-		json.NewEncoder(w).Encode(AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{
+		if err := json.NewEncoder(w).Encode(AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{
 			ID:          "v1.event-key",
 			Title:       "UFC 300",
 			Year:        2024,
@@ -28,7 +28,9 @@ func TestSearchMoviesEncodesTitleAndYear(t *testing.T) {
 			Summary:     "A title fight card.",
 			Studio:      "UFC",
 			PosterURL:   "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/poster",
-		}}})
+		}}}); err != nil {
+			t.Errorf("encode Movie search response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -52,7 +54,7 @@ func TestGetMovieParsesTypedArtwork(t *testing.T) {
 		if r.URL.Path != "/api/metadata/agents/movies/v1.event-key" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
-		json.NewEncoder(w).Encode(AgentMovieResponse{
+		if err := json.NewEncoder(w).Encode(AgentMovieResponse{
 			ID:          "v1.event-key",
 			Title:       "UFC 300",
 			SortTitle:   "UFC 300",
@@ -64,7 +66,9 @@ func TestGetMovieParsesTypedArtwork(t *testing.T) {
 			PosterURL:   "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/poster",
 			BackdropURL: "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/backdrop",
 			StillURL:    "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/still",
-		})
+		}); err != nil {
+			t.Errorf("encode Movie detail response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -117,11 +121,13 @@ func TestSearchParsesResponse(t *testing.T) {
 		if r.URL.Query().Get("title") != "NFL" {
 			t.Errorf("unexpected title param: %s", r.URL.Query().Get("title"))
 		}
-		json.NewEncoder(w).Encode(AgentSearchResponse{
+		if err := json.NewEncoder(w).Encode(AgentSearchResponse{
 			Results: []AgentSearchResult{
 				{ID: "abc-123", Title: "NFL Football", Year: 2024, PosterURL: "https://sportarr.net/img/nfl.jpg"},
 			},
-		})
+		}); err != nil {
+			t.Errorf("encode series search response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
@@ -255,7 +261,9 @@ func TestNoCacheHeaders(t *testing.T) {
 
 	c := NewClient(10)
 	c.SetBaseURL(srv.URL)
-	c.Search(context.Background(), "test")
+	if _, err := c.Search(context.Background(), "test"); err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
 }
 
 func TestGetEntityImagesParsesResponse(t *testing.T) {
