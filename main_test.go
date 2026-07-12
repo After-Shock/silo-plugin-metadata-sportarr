@@ -165,11 +165,13 @@ func TestMovieImageRPCUsesCanonicalConfiguredLocalURLs(t *testing.T) {
 		if got, want := r.URL.Path, "/api/metadata/agents/movies/v1.ufc-300"; got != want {
 			t.Errorf("Movie detail path = %q, want %q", got, want)
 		}
-		_ = json.NewEncoder(w).Encode(provider.AgentMovieResponse{
+		if err := json.NewEncoder(w).Encode(provider.AgentMovieResponse{
 			PosterURL:   "/api/metadata/agents/movies/v1.ufc-300/images/poster",
 			BackdropURL: "/api/metadata/agents/movies/v1.ufc-300/images/fanart",
 			StillURL:    "/api/metadata/agents/movies/v1.ufc-300/images/still",
-		})
+		}); err != nil {
+			t.Errorf("encode Movie detail response: %v", err)
+		}
 	}))
 	defer srv.Close()
 
