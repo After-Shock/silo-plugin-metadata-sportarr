@@ -3,10 +3,111 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestSearchMoviesEncodesTitleAndYear(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/metadata/agents/movies/search" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("title"); got != "UFC & WWE: 300" {
+			t.Errorf("unexpected title query: %q", got)
+		}
+		if got := r.URL.Query().Get("year"); got != "2024" {
+			t.Errorf("unexpected year query: %q", got)
+		}
+		json.NewEncoder(w).Encode(AgentMovieSearchResponse{Results: []AgentMovieSearchResult{{
+			ID:          "v1.event-key",
+			Title:       "UFC 300",
+			Year:        2024,
+			ReleaseDate: "2024-04-13",
+			Summary:     "A title fight card.",
+			Studio:      "UFC",
+			PosterURL:   "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/poster",
+		}}})
+	}))
+	defer srv.Close()
+
+	c := NewClient(100)
+	c.SetBaseURL(srv.URL)
+
+	resp, err := c.SearchMovies(context.Background(), "UFC & WWE: 300", 2024)
+	if err != nil {
+		t.Fatalf("search movies failed: %v", err)
+	}
+	if len(resp.Results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(resp.Results))
+	}
+	if got := resp.Results[0]; got.ID != "v1.event-key" || got.ReleaseDate != "2024-04-13" || got.Studio != "UFC" {
+		t.Errorf("unexpected movie result: %+v", got)
+	}
+}
+
+func TestGetMovieParsesTypedArtwork(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/metadata/agents/movies/v1.event-key" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(AgentMovieResponse{
+			ID:          "v1.event-key",
+			Title:       "UFC 300",
+			SortTitle:   "UFC 300",
+			Year:        2024,
+			ReleaseDate: "2024-04-13",
+			Summary:     "A title fight card.",
+			Studio:      "UFC",
+			Genres:      []string{"MMA", "Sports"},
+			PosterURL:   "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/poster",
+			BackdropURL: "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/backdrop",
+			StillURL:    "https://sportarr.local/api/metadata/agents/movies/v1.event-key/images/still",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(100)
+	c.SetBaseURL(srv.URL)
+
+	resp, err := c.GetMovie(context.Background(), "v1.event-key")
+	if err != nil {
+		t.Fatalf("get movie failed: %v", err)
+	}
+	if got := resp; got.ReleaseDate != "2024-04-13" || got.PosterURL == "" || got.BackdropURL == "" || got.StillURL == "" {
+		t.Errorf("expected typed movie artwork and release date, got %+v", got)
+	}
+}
+
+func TestGetMovieReturnsTypedNotFoundOnlyFor404(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		status       int
+		wantNotFound bool
+	}{
+		{name: "not found", status: http.StatusNotFound, wantNotFound: true},
+		{name: "bad request", status: http.StatusBadRequest, wantNotFound: false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.status)
+			}))
+			defer srv.Close()
+
+			c := NewClient(100)
+			c.SetBaseURL(srv.URL)
+			_, err := c.GetMovie(context.Background(), "v1.missing")
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			var notFound *ErrNotFound
+			if got := errors.As(err, &notFound); got != tt.wantNotFound {
+				t.Errorf("errors.As(ErrNotFound) = %v, want %v; error: %v", got, tt.wantNotFound, err)
+			}
+		})
+	}
+}
 
 func TestSearchParsesResponse(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

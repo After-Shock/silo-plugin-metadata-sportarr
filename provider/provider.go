@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -26,7 +27,7 @@ func NewProviderWithClient(c *Client) *Provider {
 
 func (p *Provider) Slug() string       { return "sportarr" }
 func (p *Provider) Name() string       { return "Sportarr" }
-func (p *Provider) ForTypes() []string { return []string{"series"} }
+func (p *Provider) ForTypes() []string { return []string{"series", "movie"} }
 
 func mapImageType(t string) (metadata.ImageType, bool) {
 	switch t {
@@ -100,6 +101,10 @@ func entityImagesToRemote(images []EntityImage) []metadata.RemoteImage {
 }
 
 func (p *Provider) Search(ctx context.Context, query metadata.SearchQuery) ([]metadata.SearchResult, error) {
+	if query.ContentType == "movie" {
+		return p.searchMovies(ctx, query)
+	}
+
 	if sportarrID := query.ProviderIDs["sportarr"]; sportarrID != "" {
 		return p.searchByID(ctx, sportarrID)
 	}
@@ -109,6 +114,60 @@ func (p *Provider) Search(ctx context.Context, query metadata.SearchQuery) ([]me
 	}
 
 	return nil, nil
+}
+
+func (p *Provider) searchMovies(ctx context.Context, query metadata.SearchQuery) ([]metadata.SearchResult, error) {
+	if !p.client.localMovieAPIConfigured() {
+		return nil, nil
+	}
+
+	if sportarrID := query.ProviderIDs["sportarr"]; sportarrID != "" {
+		movie, err := p.client.GetMovie(ctx, sportarrID)
+		if err == nil {
+			return []metadata.SearchResult{movieSearchResult(movie, sportarrID)}, nil
+		}
+		var notFound *ErrNotFound
+		if !errors.As(err, &notFound) {
+			return nil, err
+		}
+		if query.Title == "" || query.Year <= 0 {
+			return nil, nil
+		}
+	}
+
+	if query.Title == "" || query.Year <= 0 {
+		return nil, nil
+	}
+	resp, err := p.client.SearchMovies(ctx, query.Title, query.Year)
+	if err != nil {
+		return nil, err
+	}
+
+	results := make([]metadata.SearchResult, 0, len(resp.Results))
+	for _, movie := range resp.Results {
+		results = append(results, metadata.SearchResult{
+			Name:        movie.Title,
+			Year:        movie.Year,
+			ReleaseDate: movie.ReleaseDate,
+			ProviderIDs: map[string]string{"sportarr": movie.ID},
+			ImageURL:    movie.PosterURL,
+			Overview:    movie.Summary,
+			Provider:    p.Slug(),
+		})
+	}
+	return results, nil
+}
+
+func movieSearchResult(movie *AgentMovieResponse, providerID string) metadata.SearchResult {
+	return metadata.SearchResult{
+		Name:        movie.Title,
+		Year:        movie.Year,
+		ReleaseDate: movie.ReleaseDate,
+		ProviderIDs: map[string]string{"sportarr": providerID},
+		ImageURL:    movie.PosterURL,
+		Overview:    movie.Summary,
+		Provider:    "sportarr",
+	}
 }
 
 func (p *Provider) searchByID(ctx context.Context, leagueID string) ([]metadata.SearchResult, error) {
@@ -150,6 +209,9 @@ func (p *Provider) GetMetadata(ctx context.Context, req metadata.MetadataRequest
 	if sportarrID == "" {
 		return nil, nil
 	}
+	if req.ContentType == "movie" {
+		return p.getMovieMetadata(ctx, sportarrID)
+	}
 
 	series, err := p.client.GetSeries(ctx, sportarrID)
 	if err != nil {
@@ -182,6 +244,38 @@ func (p *Provider) GetMetadata(ctx context.Context, req metadata.MetadataRequest
 		result.LogoPath = pickPrimaryURL(imgs.Images, "logo")
 	}
 
+	return result, nil
+}
+
+func (p *Provider) getMovieMetadata(ctx context.Context, providerID string) (*metadata.MetadataResult, error) {
+	if !p.client.localMovieAPIConfigured() {
+		return nil, nil
+	}
+	movie, err := p.client.GetMovie(ctx, providerID)
+	if err != nil {
+		var notFound *ErrNotFound
+		if errors.As(err, &notFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	result := &metadata.MetadataResult{
+		HasMetadata:  true,
+		ProviderIDs:  map[string]string{"sportarr": providerID},
+		Title:        movie.Title,
+		SortTitle:    movie.SortTitle,
+		Overview:     movie.Summary,
+		Year:         movie.Year,
+		ReleaseDate:  movie.ReleaseDate,
+		PosterPath:   movie.PosterURL,
+		BackdropPath: movie.BackdropURL,
+		StillPath:    movie.StillURL,
+	}
+	result.Genres = append(result.Genres, movie.Genres...)
+	if movie.Studio != "" {
+		result.Studios = []string{movie.Studio}
+	}
 	return result, nil
 }
 
@@ -254,6 +348,9 @@ func (p *Provider) GetImages(ctx context.Context, req metadata.ImageRequest) ([]
 	if sportarrID == "" {
 		return nil, nil
 	}
+	if req.ContentType == "movie" {
+		return p.getMovieImages(ctx, sportarrID)
+	}
 
 	var entityType string
 	switch req.ContentType {
@@ -274,3 +371,27 @@ func (p *Provider) GetImages(ctx context.Context, req metadata.ImageRequest) ([]
 	return entityImagesToRemote(resp.Images), nil
 }
 
+func (p *Provider) getMovieImages(ctx context.Context, providerID string) ([]metadata.RemoteImage, error) {
+	if !p.client.localMovieAPIConfigured() {
+		return nil, nil
+	}
+	movie, err := p.client.GetMovie(ctx, providerID)
+	if err != nil {
+		var notFound *ErrNotFound
+		if errors.As(err, &notFound) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	images := make([]metadata.RemoteImage, 0, 3)
+	if movie.PosterURL != "" {
+		images = append(images, metadata.RemoteImage{URL: movie.PosterURL, Type: metadata.ImagePoster})
+	}
+	if movie.BackdropURL != "" {
+		images = append(images, metadata.RemoteImage{URL: movie.BackdropURL, Type: metadata.ImageBackdrop})
+	}
+	if movie.StillURL != "" {
+		images = append(images, metadata.RemoteImage{URL: movie.StillURL, Type: metadata.ImageStill})
+	}
+	return images, nil
+}

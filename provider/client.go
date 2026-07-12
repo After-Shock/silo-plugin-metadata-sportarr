@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -26,6 +27,16 @@ type Client struct {
 	limiter    *rate.Limiter
 }
 
+// ErrNotFound reports a 404 from Sportarr without treating other 4xx responses
+// as a missing resource.
+type ErrNotFound struct {
+	URL string
+}
+
+func (e *ErrNotFound) Error() string {
+	return fmt.Sprintf("sportarr: not found: %s", e.URL)
+}
+
 func NewClient(rateLimit int) *Client {
 	if rateLimit <= 0 {
 		rateLimit = 10
@@ -39,6 +50,32 @@ func NewClient(rateLimit int) *Client {
 
 func (c *Client) SetBaseURL(url string) {
 	c.baseURL = url
+}
+
+func (c *Client) localMovieAPIConfigured() bool {
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil || endpoint.Hostname() == "" {
+		return false
+	}
+
+	scheme := strings.ToLower(endpoint.Scheme)
+	host := strings.TrimSuffix(strings.ToLower(endpoint.Hostname()), ".")
+	effectivePort := endpoint.Port()
+	if effectivePort == "" {
+		switch scheme {
+		case "http":
+			effectivePort = "80"
+		case "https":
+			effectivePort = "443"
+		}
+	}
+
+	// The Movie agent API is instance-local, never the public Sportarr hub.
+	// Reject its hostname regardless of HTTP scheme or explicit/default port.
+	if (scheme == "http" || scheme == "https") && host == "sportarr.net" && effectivePort != "" {
+		return false
+	}
+	return true
 }
 
 func (c *Client) doGet(ctx context.Context, path string, dest any) error {
@@ -93,6 +130,11 @@ func (c *Client) doGet(ctx context.Context, path string, dest any) error {
 			return fmt.Errorf("sportarr: server error %d after %d retries", resp.StatusCode, maxRetries)
 		}
 
+		if resp.StatusCode == http.StatusNotFound {
+			resp.Body.Close()
+			return &ErrNotFound{URL: reqURL}
+		}
+
 		if resp.StatusCode >= 400 {
 			body, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBody))
 			resp.Body.Close()
@@ -121,6 +163,27 @@ func retryAfterOrDefault(resp *http.Response, attempt int) time.Duration {
 func (c *Client) Search(ctx context.Context, title string) (*AgentSearchResponse, error) {
 	path := "/api/metadata/agents/search?title=" + url.QueryEscape(title)
 	var resp AgentSearchResponse
+	if err := c.doGet(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) SearchMovies(ctx context.Context, title string, year int) (*AgentMovieSearchResponse, error) {
+	path := "/api/metadata/agents/movies/search?" + url.Values{
+		"title": []string{title},
+		"year":  []string{strconv.Itoa(year)},
+	}.Encode()
+	var resp AgentMovieSearchResponse
+	if err := c.doGet(ctx, path, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+func (c *Client) GetMovie(ctx context.Context, providerID string) (*AgentMovieResponse, error) {
+	path := "/api/metadata/agents/movies/" + url.PathEscape(providerID)
+	var resp AgentMovieResponse
 	if err := c.doGet(ctx, path, &resp); err != nil {
 		return nil, err
 	}
