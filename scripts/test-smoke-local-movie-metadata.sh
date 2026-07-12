@@ -35,5 +35,10 @@ grep -Fq 'validate_sportarr_movie_source' "$smoke" || fail 'Movie API source val
 grep -Fq 'tmp_dir/plugin-build' "$smoke" || fail 'local plugin artifacts are not isolated in the temporary directory'
 grep -Fq 'api GET /admin/tasks/check_plugin_updates' "$smoke" || fail 'update task completion is not polled'
 grep -Fq 'assert_fixture_image' "$smoke" || fail 'persisted artwork bytes are not verified'
+grep -Fq 'Movie still is intentionally not asserted as persisted Silo artwork' "$root_dir/README.md" || fail 'Movie still persistence boundary is not documented'
+grep -Fq 'TestMovieImageRPCUsesCanonicalConfiguredLocalURLs' "$root_dir/README.md" || fail 'Movie still protocol-test evidence is not documented'
+if grep -Fq 'assert_fixture_image still_url' "$smoke"; then
+  fail 'Movie still is incorrectly asserted as persisted Silo artwork'
+fi
 
 printf 'smoke harness static contract: PASS\n'

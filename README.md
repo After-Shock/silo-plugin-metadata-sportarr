@@ -60,8 +60,10 @@ installs v1.0.2 from a temporary binary RepositoryIndex, records a notify-only
 update, applies the local build, and verifies the disabled Movie row before it
 enables and reorders Sportarr for the test library. The update check must reach
 a completed task state before `available_version` is inspected. After matching,
-the harness fetches every persisted poster/backdrop/still URL from inside the
-Silo container and verifies an image response plus the known fixture bytes.
+the harness fetches persisted poster and backdrop URLs from inside the Silo
+container and verifies an image response plus the known fixture bytes. Movie still is intentionally not asserted as persisted Silo artwork: Silo Movie item persistence has poster/backdrop/logo fields only. Plugin-level protocol coverage
+in `TestMovieImageRPCUsesCanonicalConfiguredLocalURLs` proves that Sportarr
+still is emitted and resolves correctly.
 
 Cleanup is automatic on success, failure, or interruption: Compose containers,
 volumes, the external network, image, temporary media, database, token, and

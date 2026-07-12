@@ -259,7 +259,7 @@ provider_id=$(jq -r '.candidates[] | .provider_ids.sportarr // empty' <<<"$candi
 [[ "$provider_id" == v1.ab1c2d3e-4f50-4678-9abc-def012345678 ]] || die "unexpected Sportarr provider id: ${provider_id:-none}"
 api POST "/admin/items/$content_id/match/apply" "{\"library_id\":$library_id,\"provider_ids\":{\"sportarr\":\"$provider_id\"}}" >/dev/null
 item=$(api GET "/catalog/items/$content_id")
-jq -e --arg id "$provider_id" '.release_date == "2024-04-13" and ((.provider_ids.sportarr // .external_ids.sportarr) == $id) and ([.poster_url,.backdrop_url,.still_url] | all(. != null and . != ""))' <<<"$item" >/dev/null || die 'persisted release date, provider ID, or artwork path assertion failed'
+jq -e --arg id "$provider_id" '.release_date == "2024-04-13" and ((.provider_ids.sportarr // .external_ids.sportarr) == $id) and ([.poster_url,.backdrop_url] | all(. != null and . != ""))' <<<"$item" >/dev/null || die 'persisted release date, provider ID, poster, or backdrop assertion failed'
 fixture_sha=$(sha256sum "$tmp_dir/catalog/images/ufc-300-poster.jpg" | awk '{print $1}')
 assert_fixture_image() {
   local field=$1
@@ -286,7 +286,6 @@ assert_fixture_image() {
 }
 assert_fixture_image poster_url http://plugin-catalog:8080/images/ufc-300-poster.jpg
 assert_fixture_image backdrop_url http://plugin-catalog:8080/images/ufc-300-backdrop.jpg
-assert_fixture_image still_url http://plugin-catalog:8080/images/ufc-300-still.jpg
 docker logs "$sportarr_container" > "$tmp_dir/logs/sportarr.log" 2>&1
 grep -Fq '/api/metadata/agents/movies' "$tmp_dir/logs/sportarr.log" || die 'Sportarr access log did not prove the in-network Movie request'
 log 'local Movie metadata smoke passed'
