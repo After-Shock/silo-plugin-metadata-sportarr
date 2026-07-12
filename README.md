@@ -19,8 +19,8 @@ go build .
 
 `scripts/smoke-local-movie-metadata.sh` is the pre-push integration gate for
 the local Sportarr Movie-agent flow. It creates a fresh temporary directory,
-a unique `sportarr-movie-e2e-*` Compose project, and the external
-`sportarr-movie-e2e-net` Docker network. Silo is the only published service,
+a unique `sportarr-movie-e2e-*` Compose project, and its matching external
+`sportarr-movie-e2e-*-net` Docker network. Silo is the only published service,
 and its port is bound to `127.0.0.1`; Sportarr and the temporary plugin catalog
 are reachable only by their Docker aliases (`sportarr` and `plugin-catalog`).
 

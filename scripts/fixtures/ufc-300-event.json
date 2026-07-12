@@ -14,8 +14,8 @@
     "broadcast_date": "2024-04-13",
     "status": "Completed",
     "description": "Disposable Silo Movie metadata smoke fixture.",
-    "poster_url": "http://plugin-catalog:8080/images/ufc-300-poster.jpg",
-    "fanart_url": "http://plugin-catalog:8080/images/ufc-300-backdrop.jpg",
-    "thumb_url": "http://plugin-catalog:8080/images/ufc-300-still.jpg"
+    "poster_url": "http://plugin-catalog:80/images/ufc-300-poster.jpg",
+    "fanart_url": "http://plugin-catalog:80/images/ufc-300-backdrop.jpg",
+    "thumb_url": "http://plugin-catalog:80/images/ufc-300-still.jpg"
   }
 }

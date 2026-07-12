@@ -53,4 +53,4 @@ services:
 networks:
   sportarr_movie_e2e_net:
     external: true
-    name: ${SMOKE_NETWORK:-sportarr-movie-e2e-net}
+    name: ${SMOKE_NETWORK:?SMOKE_NETWORK is required}

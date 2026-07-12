@@ -78,10 +78,10 @@ validate_sportarr_movie_source
 if "$dry_run"; then
   cat <<EOF
 Dry run: no Docker resources or files will be created.
-  external network: sportarr-movie-e2e-net
+  external network: sportarr-movie-e2e-<unique>-net
   compose project:  sportarr-movie-e2e-<unique>
   Silo port:        127.0.0.1:<allocated>:8080
-  in-network URLs:  http://sportarr:1867 and http://plugin-catalog:8080
+  in-network URLs:  http://sportarr:1867 and http://plugin-catalog:80
   production URL:   https://sportarr.net (refused)
   v1.0.2 binary:    ${v102_binary_url:-<required for full run>}
   v1.0.2 manifest:  ${v102_manifest_url:-<required for full run>}
@@ -97,7 +97,8 @@ docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
 
 tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/sportarr-movie-e2e.XXXXXXXX")
 project="sportarr-movie-e2e-${RANDOM}${RANDOM}"
-network=sportarr-movie-e2e-net
+network="${project}-net"
+NETWORK_CREATED=0
 silo_port=$(shuf -i 20000-29999 -n 1)
 sportarr_container="${project}-sportarr"
 sportarr_image="sportarr-movie-e2e:${project}"
@@ -122,7 +123,9 @@ cleanup() {
   fi
   "${compose[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
   docker rm -f "$sportarr_container" >/dev/null 2>&1 || true
-  docker network rm "$network" >/dev/null 2>&1 || true
+  if ((NETWORK_CREATED)); then
+    docker network rm "$network" >/dev/null 2>&1 || true
+  fi
   docker image rm "$sportarr_image" >/dev/null 2>&1 || true
   rm -rf "$tmp_dir"
   exit "$result"
@@ -158,6 +161,7 @@ cp -a "$sportarr_root/." "$tmp_dir/sportarr-build"
   docker build -t "$sportarr_image" .
 )
 docker network create "$network" >/dev/null
+NETWORK_CREATED=1
 docker run -d --name "$sportarr_container" --network "$network" --network-alias sportarr -v "$tmp_dir/sportarr-config:/config" "$sportarr_image" >/dev/null
 wait_for 'Sportarr migrations and health' "docker exec '$sportarr_container' curl -fsS http://localhost:1867/api/health > '$tmp_dir/sportarr-health.json'"
 jq -e '.status == "healthy"' "$tmp_dir/sportarr-health.json" >/dev/null || die 'Sportarr did not report healthy'
@@ -188,7 +192,7 @@ log 'starting Silo and asserting both aliases resolve from its container'
 "${compose[@]}" up -d
 wait_for 'Silo setup endpoint' "curl -fsS http://127.0.0.1:$silo_port/api/v1/auth/setup > '$tmp_dir/setup.json'"
 jq -e '.needs_setup == true' "$tmp_dir/setup.json" >/dev/null || die 'Silo setup was not available'
-"${compose[@]}" exec -T silo sh -ec 'curl -fsS http://sportarr:1867/api/health | grep -q healthy; curl -fsS http://plugin-catalog:8080/index.json >/dev/null'
+"${compose[@]}" exec -T silo sh -ec 'curl -fsS http://sportarr:1867/api/health | grep -q healthy; curl -fsS http://plugin-catalog:80/index.json >/dev/null'
 
 log 'bootstrapping a disposable admin and scanning an actual one-second Movie'
 setup=$(curl -fsS -X POST "http://127.0.0.1:$silo_port/api/v1/auth/setup" -H 'Content-Type: application/json' --data '{"username":"smoke-admin","email":"smoke@example.invalid","password":"smoke-password-only","create_default_profile":true,"default_profile_name":"Smoke"}')
@@ -209,7 +213,7 @@ done
 [[ -n "$content_id" ]] || die 'initial scan never returned a Movie content ID'
 
 log 'installing v1.0.2, setting notify, discovering v1.0.3, and applying it'
-repository=$(api POST /admin/plugins/repositories '{"url":"http://plugin-catalog:8080/index.json","display_name":"smoke catalog","enabled":true}')
+repository=$(api POST /admin/plugins/repositories '{"url":"http://plugin-catalog:80/index.json","display_name":"smoke catalog","enabled":true}')
 repository_id=$(jq -r '.id' <<<"$repository")
 installation=$(api POST /admin/plugins/installations "{\"repository_id\":$repository_id,\"plugin_id\":\"silo.sportarr\",\"version\":\"1.0.2\"}")
 installation_id=$(jq -r '.id' <<<"$installation")
@@ -284,8 +288,8 @@ assert_fixture_image() {
     test "$actual_sha" = "$expected_sha"
   ' sh "$persisted_url" "$fixture_sha" "$expected_target" || die "Silo could not resolve $field to the expected fixture image"
 }
-assert_fixture_image poster_url http://plugin-catalog:8080/images/ufc-300-poster.jpg
-assert_fixture_image backdrop_url http://plugin-catalog:8080/images/ufc-300-backdrop.jpg
+assert_fixture_image poster_url http://plugin-catalog:80/images/ufc-300-poster.jpg
+assert_fixture_image backdrop_url http://plugin-catalog:80/images/ufc-300-backdrop.jpg
 docker logs "$sportarr_container" > "$tmp_dir/logs/sportarr.log" 2>&1
 grep -Fq '/api/metadata/agents/movies' "$tmp_dir/logs/sportarr.log" || die 'Sportarr access log did not prove the in-network Movie request'
 log 'local Movie metadata smoke passed'
