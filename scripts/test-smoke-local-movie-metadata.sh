@@ -48,6 +48,13 @@ grep -Fq 'validate_sportarr_movie_source' "$smoke" || fail 'Movie API source val
 grep -Fq 'tmp_dir/plugin-build' "$smoke" || fail 'local plugin artifacts are not isolated in the temporary directory'
 grep -Fq 'api GET /admin/tasks/check_plugin_updates' "$smoke" || fail 'update task completion is not polled'
 grep -Fq 'assert_fixture_image' "$smoke" || fail 'persisted artwork bytes are not verified'
+grep -Fq "trap 'on_err \$LINENO' ERR" "$smoke" || fail 'smoke does not identify the failing step and exit status'
+grep -Fq 'setup response (sensitive fields redacted)' "$smoke" || fail 'smoke does not log a redacted setup response'
+grep -Fq 'test("token|password|secret"; "i")' "$smoke" || fail 'setup diagnostic does not redact sensitive fields'
+grep -Fq 'ffmpeg_stderr="$tmp_dir/logs/ffmpeg.stderr"' "$smoke" || fail 'smoke does not retain ffmpeg stderr for diagnostics'
+grep -Fq 'run_ffmpeg_fixture()' "$smoke" || fail 'smoke does not isolate host and Docker ffmpeg execution'
+grep -Fq -- '--entrypoint ffmpeg' "$smoke" || fail 'forced Docker toolchains do not use the built Sportarr ffmpeg'
+grep -Fq -- '--mount "type=bind,src=$media_dir,dst=/media"' "$smoke" || fail 'Docker ffmpeg does not use a bounded media mount'
 grep -Fq 'mcr.microsoft.com/dotnet/sdk:8.0' "$smoke" || fail 'Docker .NET 8 fallback image is missing'
 grep -Fq 'golang:1.26' "$smoke" || fail 'Docker Go 1.26 fallback image is missing'
 grep -Fq 'make VERSION=1.0.3 build-all' "$smoke" || fail 'Docker Go fallback does not invoke the build-all Make target'
@@ -67,7 +74,7 @@ if grep -Fq 'need "$c"' "$smoke" && grep -Fq 'sqlite3 dotnet go' "$smoke"; then
 fi
 grep -Fq 'Movie still is intentionally not asserted as persisted Silo artwork' "$root_dir/README.md" || fail 'Movie still persistence boundary is not documented'
 grep -Fq 'TestMovieImageRPCUsesCanonicalConfiguredLocalURLs' "$root_dir/README.md" || fail 'Movie still protocol-test evidence is not documented'
-grep -Fq 'Docker automatically supplies SQLite, .NET 8, and Go 1.26' "$root_dir/README.md" || fail 'README does not document Docker toolchain fallback'
+grep -Fq 'and ffmpeg if those host tools are absent' "$root_dir/README.md" || fail 'README does not document Docker toolchain fallback'
 if grep -Fq 'assert_fixture_image still_url' "$smoke"; then
   fail 'Movie still is incorrectly asserted as persisted Silo artwork'
 fi

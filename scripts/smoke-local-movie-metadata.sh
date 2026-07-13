@@ -33,12 +33,12 @@ Options:
   --silo-image IMAGE        Silo runtime image.
   --v102-binary-url URL     Released v1.0.2 linux/amd64 binary URL.
   --v102-manifest-url URL   Released v1.0.2 manifest JSON URL.
-  --docker-toolchains        Force Docker for SQLite, .NET 8, and Go 1.26.
+  --docker-toolchains        Force Docker for SQLite, .NET 8, Go 1.26, and ffmpeg.
   --help                    Show this help.
 
-Required: Docker Compose v2, curl, jq, sha256sum, ffmpeg, openssl, shuf, and
-an image compatible with the checked-out Silo API. sqlite3, .NET 8, Go, and
-make are used from the host when available; Docker supplies them when absent.
+Required: Docker Compose v2, curl, jq, sha256sum, openssl, shuf, and an image
+compatible with the checked-out Silo API. sqlite3, .NET 8, Go, make, and ffmpeg
+are used from the host when available; Docker supplies them when absent.
 EOF
 }
 
@@ -92,6 +92,19 @@ run_plugin_build_all() {
   fi
 }
 
+run_ffmpeg_fixture() {
+  local output_path=$1 media_dir filename
+  media_dir=$(dirname "$output_path")
+  filename=$(basename "$output_path")
+  if use_host_tool ffmpeg; then
+    ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=black:s=64x64:d=1 -f lavfi -i anullsrc=r=48000:cl=stereo -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac "$output_path"
+  else
+    docker run --rm --user "$(id -u):$(id -g)" --entrypoint ffmpeg \
+      --mount "type=bind,src=$media_dir,dst=/media" \
+      "$sportarr_image" -hide_banner -loglevel error -f lavfi -i color=c=black:s=64x64:d=1 -f lavfi -i anullsrc=r=48000:cl=stereo -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac "/media/$filename"
+  fi
+}
+
 validate_sportarr_movie_source() {
   local endpoint_source="$sportarr_root/src/Endpoints/MetadataAgentEndpoints.cs"
   local event_source="$sportarr_root/src/Sportarr.Data/Models/Event.cs"
@@ -127,7 +140,7 @@ EOF
   exit 0
 fi
 
-for c in docker curl jq sha256sum ffmpeg openssl shuf; do need "$c"; done
+for c in docker curl jq sha256sum openssl shuf; do need "$c"; done
 docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
 
 [[ -n "$v102_binary_url" ]] || die 'pass --v102-binary-url (a released v1.0.2 binary is not committed)'
@@ -169,6 +182,14 @@ cleanup() {
   exit "$result"
 }
 trap cleanup EXIT INT TERM
+
+smoke_step='initializing smoke harness'
+on_err() {
+  local status=$? line=$1
+  printf 'ERROR: smoke step failed: %s (exit %d, line %d)\n' "$smoke_step" "$status" "$line" >&2
+  exit "$status"
+}
+trap 'on_err $LINENO' ERR
 
 api_token=
 api() {
@@ -232,11 +253,19 @@ jq -e '.needs_setup == true' "$tmp_dir/setup.json" >/dev/null || die 'Silo setup
 "${compose[@]}" exec -T silo sh -ec 'curl -fsS http://sportarr:1867/api/health | grep -q healthy; curl -fsS http://plugin-catalog:80/index.json >/dev/null'
 
 log 'bootstrapping a disposable admin and scanning an actual one-second Movie'
+smoke_step='creating the disposable Silo administrator'
 setup=$(curl -fsS -X POST "http://127.0.0.1:$silo_port/api/v1/auth/setup" -H 'Content-Type: application/json' --data '{"username":"smoke-admin","email":"smoke@example.invalid","password":"smoke-password-only","create_default_profile":true,"default_profile_name":"Smoke"}')
+setup_redacted=$(jq -c 'with_entries(if (.key | test("token|password|secret"; "i")) then .value = "[REDACTED]" else . end)' <<<"$setup")
+printf 'setup response (sensitive fields redacted): %s\n' "$setup_redacted"
+smoke_step='extracting the disposable Silo access token'
 api_token=$(jq -r '.access_token' <<<"$setup")
 [[ -n "$api_token" && "$api_token" != null ]] || die 'setup did not return a bearer token'
+smoke_step='saving the disposable Silo access token'
 printf '%s' "$api_token" > "$tmp_dir/token"
-ffmpeg -hide_banner -loglevel error -f lavfi -i color=c=black:s=64x64:d=1 -f lavfi -i anullsrc=r=48000:cl=stereo -shortest -c:v libx264 -pix_fmt yuv420p -c:a aac "$tmp_dir/media/UFC 300 (2024).mkv"
+ffmpeg_stderr="$tmp_dir/logs/ffmpeg.stderr"
+smoke_step='generating the one-second Movie fixture'
+run_ffmpeg_fixture "$tmp_dir/media/UFC 300 (2024).mkv" 2>"$ffmpeg_stderr"
+smoke_step='creating the disposable Movie library'
 library=$(api POST /libraries '{"name":"Smoke UFC Movies","type":"movies","paths":["/media"]}')
 library_id=$(jq -r '.id' <<<"$library")
 [[ "$library_id" =~ ^[0-9]+$ ]] || die 'library create did not return an id'
