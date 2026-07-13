@@ -205,6 +205,12 @@ wait_for() {
   die "timed out waiting for $description"
 }
 
+assert_persisted_provider_id() {
+  local content_id=$1 provider_id=$2 persisted
+  persisted=$(printf '%s\n' "SELECT 1 FROM media_item_provider_ids WHERE content_id = :'content_id' AND provider = 'sportarr' AND provider_id = :'provider_id' AND item_type = 'movie';" | "${compose[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -v content_id="$content_id" -v provider_id="$provider_id" -U silo -d silo -tA)
+  [[ "$persisted" == 1 ]] || die "Sportarr provider ID was not persisted for Movie content $content_id"
+}
+
 mkdir -p "$tmp_dir"/{catalog/images,media,silo-data,sportarr-config,logs}
 printf 'smoke image\n' > "$tmp_dir/catalog/images/ufc-300-poster.jpg"
 cp "$tmp_dir/catalog/images/ufc-300-poster.jpg" "$tmp_dir/catalog/images/ufc-300-backdrop.jpg"
@@ -324,12 +330,22 @@ api PUT "/libraries/$library_id/providers" "$levels" >/dev/null
 api PUT "/admin/plugins/installations/$installation_id/config" "{\"key\":\"sportarr\",\"value\":{\"base_url\":\"$sportarr_base_url\"}}" >/dev/null
 
 log 'matching UFC 300 and proving persisted release date, provider ID, and Sportarr artwork'
+smoke_step='searching Movie match candidates'
 candidates=$(api POST "/admin/items/$content_id/match/search" "{\"library_id\":$library_id,\"title\":\"UFC 300\",\"year\":2024}")
+jq -c . <<<"$candidates" > "$tmp_dir/logs/match-candidates.json"
 provider_id=$(jq -r '.candidates[] | .provider_ids.sportarr // empty' <<<"$candidates" | head -1)
 [[ "$provider_id" == v1.ab1c2d3e-4f50-4678-9abc-def012345678 ]] || die "unexpected Sportarr provider id: ${provider_id:-none}"
-api POST "/admin/items/$content_id/match/apply" "{\"library_id\":$library_id,\"provider_ids\":{\"sportarr\":\"$provider_id\"}}" >/dev/null
+smoke_step='applying the Sportarr Movie match'
+apply_response=$(api POST "/admin/items/$content_id/match/apply" "{\"library_id\":$library_id,\"provider_ids\":{\"sportarr\":\"$provider_id\"}}")
+printf '%s\n' "$apply_response" > "$tmp_dir/logs/match-apply.json"
+smoke_step='retrieving the persisted Movie item'
 item=$(api GET "/catalog/items/$content_id")
-jq -e --arg id "$provider_id" '.release_date == "2024-04-13" and ((.provider_ids.sportarr // .external_ids.sportarr) == $id) and ([.poster_url,.backdrop_url] | all(. != null and . != ""))' <<<"$item" >/dev/null || die 'persisted release date, provider ID, poster, or backdrop assertion failed'
+jq -c . <<<"$item" > "$tmp_dir/logs/persisted-item.json"
+"${compose[@]}" logs silo > "$tmp_dir/logs/silo.log" 2>&1 || true
+smoke_step='asserting persisted Movie metadata and artwork'
+jq -e '.release_date == "2024-04-13" and ([.poster_url,.backdrop_url] | all(. != null and . != ""))' <<<"$item" >/dev/null || die 'persisted release date, poster, or backdrop assertion failed'
+smoke_step='asserting durable Sportarr Movie provider identity'
+assert_persisted_provider_id "$content_id" "$provider_id"
 fixture_sha=$(sha256sum "$tmp_dir/catalog/images/ufc-300-poster.jpg" | awk '{print $1}')
 assert_fixture_image() {
   local field=$1
