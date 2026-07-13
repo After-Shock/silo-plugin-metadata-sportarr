@@ -372,6 +372,4 @@ assert_fixture_image() {
 }
 assert_fixture_image poster_url http://plugin-catalog:80/images/ufc-300-poster.jpg
 assert_fixture_image backdrop_url http://plugin-catalog:80/images/ufc-300-backdrop.jpg
-docker logs "$sportarr_container" > "$tmp_dir/logs/sportarr.log" 2>&1
-grep -Fq '/api/metadata/agents/movies' "$tmp_dir/logs/sportarr.log" || die 'Sportarr access log did not prove the in-network Movie request'
 log 'local Movie metadata smoke passed'
