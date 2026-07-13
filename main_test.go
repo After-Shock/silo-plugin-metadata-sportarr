@@ -123,6 +123,9 @@ func TestResolveOneSportarrPath(t *testing.T) {
 	}{
 		{"empty", "", ""},
 		{"canonical", "sportarr:///api/images/abc123", "https://sportarr.net/api/images/abc123"},
+		// Silo strips the plugin scheme before calling ResolveImageURL. The
+		// resolver must therefore accept the bare path it receives over RPC.
+		{"bare path from Silo", "/api/images/abc123", "https://sportarr.net/api/images/abc123"},
 		{"full url passthrough", "https://example.com/image.jpg", "https://example.com/image.jpg"},
 	}
 

@@ -90,6 +90,9 @@ func resolveOneSportarrPath(baseURL, path, _ string) string {
 	if strings.HasPrefix(path, "sportarr://") {
 		return baseURL + strings.TrimPrefix(path, "sportarr://")
 	}
+	if strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "//") {
+		return baseURL + path
+	}
 	return path
 }
 
