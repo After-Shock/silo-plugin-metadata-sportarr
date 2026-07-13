@@ -11,8 +11,11 @@ silo_image="${SILO_IMAGE:-ghcr.io/silo-server/silo-server:latest}"
 sportarr_base_url="${SPORTARR_SMOKE_BASE_URL:-http://sportarr:1867}"
 v102_binary_url="${SPORTARR_V102_BINARY_URL:-}"
 v102_manifest_url="${SPORTARR_V102_MANIFEST_URL:-}"
+dotnet_image="${SPORTARR_DOTNET_IMAGE:-mcr.microsoft.com/dotnet/sdk:8.0}"
+go_image="${SPORTARR_GO_IMAGE:-golang:1.26}"
 dry_run=false
 keep=false
+docker_toolchains=false
 
 usage() {
   cat <<'EOF'
@@ -30,10 +33,12 @@ Options:
   --silo-image IMAGE        Silo runtime image.
   --v102-binary-url URL     Released v1.0.2 linux/amd64 binary URL.
   --v102-manifest-url URL   Released v1.0.2 manifest JSON URL.
+  --docker-toolchains        Force Docker for SQLite, .NET 8, and Go 1.26.
   --help                    Show this help.
 
-Required: docker Compose v2, curl, jq, sha256sum, ffmpeg, sqlite3, dotnet 8,
-Go, and an image compatible with the checked-out Silo API.
+Required: Docker Compose v2, curl, jq, sha256sum, ffmpeg, openssl, shuf, and
+an image compatible with the checked-out Silo API. sqlite3, .NET 8, Go, and
+make are used from the host when available; Docker supplies them when absent.
 EOF
 }
 
@@ -46,6 +51,7 @@ while (($#)); do
     --silo-image) silo_image=${2:?missing value}; shift 2 ;;
     --v102-binary-url) v102_binary_url=${2:?missing value}; shift 2 ;;
     --v102-manifest-url) v102_manifest_url=${2:?missing value}; shift 2 ;;
+    --docker-toolchains) docker_toolchains=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; exit 2 ;;
   esac
@@ -54,6 +60,37 @@ done
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '\n==> %s\n' "$*"; }
 need() { command -v "$1" >/dev/null || die "missing command: $1"; }
+use_host_tool() { [[ "$docker_toolchains" == false ]] && command -v "$1" >/dev/null 2>&1; }
+
+run_dotnet_publish() {
+  local workdir=$1 runtime=$2 output=$3
+  if use_host_tool dotnet; then
+    (
+      cd "$workdir"
+      dotnet publish src/Sportarr.csproj -c Release -r "$runtime" --self-contained false -o "$output"
+    )
+  else
+    docker run --rm --user "$(id -u):$(id -g)" \
+      --mount "type=bind,src=$workdir,dst=/work" --workdir /work \
+      -e DOTNET_CLI_HOME=/tmp/dotnet-cli -e NUGET_PACKAGES=/tmp/nuget \
+      "$dotnet_image" dotnet publish src/Sportarr.csproj -c Release -r "$runtime" --self-contained false -o "$output"
+  fi
+}
+
+run_plugin_build_all() {
+  local workdir=$1
+  if use_host_tool go && use_host_tool make; then
+    (
+      cd "$workdir"
+      make VERSION=1.0.3 build-all
+    )
+  else
+    docker run --rm --user "$(id -u):$(id -g)" \
+      --mount "type=bind,src=$workdir,dst=/work" --workdir /work \
+      -e GOCACHE=/tmp/go-cache -e GOMODCACHE=/tmp/go-mod \
+      "$go_image" make VERSION=1.0.3 build-all
+  fi
+}
 
 validate_sportarr_movie_source() {
   local endpoint_source="$sportarr_root/src/Endpoints/MetadataAgentEndpoints.cs"
@@ -85,11 +122,12 @@ Dry run: no Docker resources or files will be created.
   production URL:   https://sportarr.net (refused)
   v1.0.2 binary:    ${v102_binary_url:-<required for full run>}
   v1.0.2 manifest:  ${v102_manifest_url:-<required for full run>}
+  toolchains:       $([[ "$docker_toolchains" == true ]] && printf 'Docker (forced)' || printf 'host when available, Docker fallback')
 EOF
   exit 0
 fi
 
-for c in docker curl jq sha256sum ffmpeg sqlite3 dotnet go openssl make shuf; do need "$c"; done
+for c in docker curl jq sha256sum ffmpeg openssl shuf; do need "$c"; done
 docker compose version >/dev/null 2>&1 || die 'Docker Compose v2 is required'
 
 [[ -n "$v102_binary_url" ]] || die 'pass --v102-binary-url (a released v1.0.2 binary is not committed)'
@@ -154,10 +192,10 @@ cp "$tmp_dir/catalog/images/ufc-300-poster.jpg" "$tmp_dir/catalog/images/ufc-300
 log 'source-building Sportarr into both Dockerfile-required publish directories'
 cp -a "$sportarr_root/." "$tmp_dir/sportarr-build"
 (
-  cd "$tmp_dir/sportarr-build"
   rm -rf publish/docker-linux-x64 publish/docker-linux-arm64
-  dotnet publish src/Sportarr.csproj -c Release -r linux-x64 --self-contained false -o publish/docker-linux-x64
-  dotnet publish src/Sportarr.csproj -c Release -r linux-arm64 --self-contained false -o publish/docker-linux-arm64
+  run_dotnet_publish "$tmp_dir/sportarr-build" linux-x64 publish/docker-linux-x64
+  run_dotnet_publish "$tmp_dir/sportarr-build" linux-arm64 publish/docker-linux-arm64
+  cd "$tmp_dir/sportarr-build"
   docker build -t "$sportarr_image" .
 )
 docker network create "$network" >/dev/null
@@ -167,15 +205,14 @@ wait_for 'Sportarr migrations and health' "docker exec '$sportarr_container' cur
 jq -e '.status == "healthy"' "$tmp_dir/sportarr-health.json" >/dev/null || die 'Sportarr did not report healthy'
 
 log 'seeding the disposable SQLite database with UFC 300 and typed local artwork targets'
-"$script_dir/seed-movie-metadata-fixture.sh" --database "$tmp_dir/sportarr-config/sportarr.db" > "$tmp_dir/seed.txt"
+seed_args=(--database "$tmp_dir/sportarr-config/sportarr.db")
+"$docker_toolchains" && seed_args+=(--docker-toolchains)
+"$script_dir/seed-movie-metadata-fixture.sh" "${seed_args[@]}" > "$tmp_dir/seed.txt"
 
 log 'building the local plugin and temporary v1.0.2 -> v1.0.3 binary catalog'
 cp -a "$repo_root/." "$tmp_dir/plugin-build"
-(
-  cd "$tmp_dir/plugin-build"
-  rm -rf dist
-  make VERSION=1.0.3 build-all
-)
+rm -rf "$tmp_dir/plugin-build/dist"
+run_plugin_build_all "$tmp_dir/plugin-build"
 curl -fsSL "$v102_binary_url" -o "$tmp_dir/catalog/sportarr-v1.0.2-linux-amd64"
 cp "$tmp_dir/plugin-build/dist/plugin-linux-amd64" "$tmp_dir/catalog/sportarr-v1.0.3-linux-amd64"
 chmod +x "$tmp_dir/catalog"/sportarr-v1.0.*-linux-amd64

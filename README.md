@@ -49,7 +49,10 @@ scripts/smoke-local-movie-metadata.sh \
 ```
 
 The required host tools are Docker Compose v2, curl, jq, sha256sum, ffmpeg,
-sqlite3, .NET 8, and Go. The script copies the supplied Sportarr checkout into
+openssl, and shuf. Docker automatically supplies SQLite, .NET 8, and Go 1.26
+(including `make build-all`) if those host tools are absent; use
+`--docker-toolchains` to force those disposable containers even when they are
+installed locally. The script copies the supplied Sportarr checkout into
 its temporary directory before publishing both Dockerfile-required
 `publish/docker-linux-x64` and `publish/docker-linux-arm64` directories, so
 it does not alter that checkout. It likewise copies the plugin checkout before

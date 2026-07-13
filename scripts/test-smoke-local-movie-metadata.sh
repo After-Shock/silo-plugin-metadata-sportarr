@@ -22,9 +22,12 @@ done
 [[ -x "$seed" ]] || fail "seed script is not executable"
 
 "$smoke" --help | grep -Fq -- '--dry-run' || fail '--help does not document --dry-run'
+"$smoke" --help | grep -Fq -- '--docker-toolchains' || fail '--help does not document --docker-toolchains'
 dry_run_output=$("$smoke" --dry-run)
 grep -Fq 'Dry run:' <<<"$dry_run_output" || fail '--dry-run did not report its plan'
 grep -Fq 'external network: sportarr-movie-e2e-<unique>-net' <<<"$dry_run_output" || fail '--dry-run does not describe a per-run network'
+docker_dry_run_output=$("$smoke" --docker-toolchains --dry-run)
+grep -Fq 'toolchains:       Docker (forced)' <<<"$docker_dry_run_output" || fail '--docker-toolchains is not reflected in the dry-run plan'
 
 grep -Fq 'project="sportarr-movie-e2e-${RANDOM}${RANDOM}"' "$smoke" || fail 'compose project is not unique'
 grep -Fq 'network="${project}-net"' "$smoke" || fail 'external network is not derived from the project'
@@ -45,8 +48,26 @@ grep -Fq 'validate_sportarr_movie_source' "$smoke" || fail 'Movie API source val
 grep -Fq 'tmp_dir/plugin-build' "$smoke" || fail 'local plugin artifacts are not isolated in the temporary directory'
 grep -Fq 'api GET /admin/tasks/check_plugin_updates' "$smoke" || fail 'update task completion is not polled'
 grep -Fq 'assert_fixture_image' "$smoke" || fail 'persisted artwork bytes are not verified'
+grep -Fq 'mcr.microsoft.com/dotnet/sdk:8.0' "$smoke" || fail 'Docker .NET 8 fallback image is missing'
+grep -Fq 'golang:1.26' "$smoke" || fail 'Docker Go 1.26 fallback image is missing'
+grep -Fq 'make VERSION=1.0.3 build-all' "$smoke" || fail 'Docker Go fallback does not invoke the build-all Make target'
+grep -Fq -- '--docker-toolchains' "$seed" || fail 'seed helper does not support forced Docker toolchains'
+grep -Fq 'keinos/sqlite3:latest' "$seed" || fail 'seed helper lacks a SQLite Docker fallback image'
+grep -Fq 'sqlite_exec()' "$seed" || fail 'seed helper does not route SQLite through a safe helper'
+if grep -Fq 'docker run --rm -i' "$seed"; then :; else
+  fail 'seed Docker SQLite fallback does not feed SQL over stdin'
+fi
+grep -Fq -- '--mount "type=bind,src=$database_dir,dst=/db"' "$seed" || fail 'seed Docker SQLite fallback does not use a bounded database-directory mount'
+grep -Fq 'sqlite_user="${SPORTARR_SQLITE_USER:-99:100}"' "$seed" || fail 'seed Docker SQLite fallback does not use the Sportarr database owner'
+if rg -n '\beval\b|sh -c' "$seed"; then
+  fail 'seed helper must not evaluate database paths or fixture data through a shell'
+fi
+if grep -Fq 'need "$c"' "$smoke" && grep -Fq 'sqlite3 dotnet go' "$smoke"; then
+  fail 'smoke still requires absent host SQLite, .NET, or Go toolchains'
+fi
 grep -Fq 'Movie still is intentionally not asserted as persisted Silo artwork' "$root_dir/README.md" || fail 'Movie still persistence boundary is not documented'
 grep -Fq 'TestMovieImageRPCUsesCanonicalConfiguredLocalURLs' "$root_dir/README.md" || fail 'Movie still protocol-test evidence is not documented'
+grep -Fq 'Docker automatically supplies SQLite, .NET 8, and Go 1.26' "$root_dir/README.md" || fail 'README does not document Docker toolchain fallback'
 if grep -Fq 'assert_fixture_image still_url' "$smoke"; then
   fail 'Movie still is incorrectly asserted as persisted Silo artwork'
 fi

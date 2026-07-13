@@ -4,31 +4,51 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: seed-movie-metadata-fixture.sh --database PATH [--fixture PATH]
+Usage: seed-movie-metadata-fixture.sh --database PATH [--fixture PATH] [--docker-toolchains]
 
 The target must be the disposable Sportarr SQLite database created by the
 local smoke harness after Sportarr has completed migrations. This command
 refuses to guess a database path and never contacts a running service.
+By default it uses host sqlite3 when available and falls back to a disposable
+SQLite Docker container. --docker-toolchains forces that container path.
 EOF
 }
 
 database=
 fixture="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/fixtures/ufc-300-event.json"
+sqlite_image="${SPORTARR_SQLITE_IMAGE:-keinos/sqlite3:latest}"
+# The official Sportarr image creates its disposable SQLite database as this
+# account. Keeping the helper on that account avoids privileged host writes.
+sqlite_user="${SPORTARR_SQLITE_USER:-99:100}"
+docker_toolchains=false
 while (($#)); do
   case "$1" in
     --database) database=${2:?--database needs a value}; shift 2 ;;
     --fixture) fixture=${2:?--fixture needs a value}; shift 2 ;;
+    --docker-toolchains) docker_toolchains=true; shift ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
 command -v jq >/dev/null || { echo 'jq is required' >&2; exit 1; }
-command -v sqlite3 >/dev/null || { echo 'sqlite3 is required' >&2; exit 1; }
 [[ -n "$database" && -f "$database" ]] || { echo 'a migrated --database file is required' >&2; exit 1; }
 [[ -f "$fixture" ]] || { echo "fixture not found: $fixture" >&2; exit 1; }
+database_dir=$(cd "$(dirname "$database")" && pwd)
+database_name=$(basename "$database")
 
-has_column() { sqlite3 "$database" "SELECT 1 FROM pragma_table_info('$1') WHERE name='$2';" | grep -qx 1; }
+sqlite_exec() {
+  if [[ "$docker_toolchains" == false ]] && command -v sqlite3 >/dev/null 2>&1; then
+    sqlite3 "$database"
+  else
+    command -v docker >/dev/null || { echo 'docker is required when sqlite3 is unavailable or --docker-toolchains is used' >&2; return 1; }
+    docker run --rm -i --user "$sqlite_user" \
+      --mount "type=bind,src=$database_dir,dst=/db" --workdir /db \
+      "$sqlite_image" sqlite3 "$database_name"
+  fi
+}
+
+has_column() { printf "SELECT 1 FROM pragma_table_info('%s') WHERE name='%s';\n" "$1" "$2" | sqlite_exec | grep -qx 1; }
 for spec in 'Leagues ExternalId' 'Leagues Name' 'Events MetadataAgentKey' 'Events BroadcastDate' 'Events PosterUrl' 'Events FanartUrl' 'Events ThumbUrl'; do
   set -- $spec
   has_column "$1" "$2" || { echo "database is missing $1.$2; run against Sportarr after the Movie metadata migration" >&2; exit 1; }
@@ -51,7 +71,7 @@ poster_url=$(jq -r '.event.poster_url' "$fixture")
 fanart_url=$(jq -r '.event.fanart_url' "$fixture")
 thumb_url=$(jq -r '.event.thumb_url' "$fixture")
 
-sqlite3 "$database" <<SQL
+sqlite_exec <<SQL
 PRAGMA foreign_keys = ON;
 DELETE FROM Events WHERE ExternalId = '$(sql_quote "$event_external")';
 DELETE FROM Leagues WHERE ExternalId = '$(sql_quote "$league_external")';
