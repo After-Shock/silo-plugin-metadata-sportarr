@@ -6,6 +6,7 @@ import (
 	_ "embed"
 	"encoding/hex"
 	"fmt"
+	"net/url"
 	"os"
 	"strings"
 
@@ -27,10 +28,59 @@ func sportarrCanonicalPath(baseURL, imageURL string) string {
 	if imageURL == "" {
 		return ""
 	}
-	if strings.HasPrefix(imageURL, baseURL) {
-		return "sportarr://" + strings.TrimPrefix(imageURL, baseURL)
+
+	base, err := url.Parse(baseURL)
+	if err != nil || base.Scheme == "" || base.Host == "" || base.User != nil {
+		return imageURL
 	}
-	return imageURL
+	if strings.HasPrefix(imageURL, "/") && !strings.HasPrefix(imageURL, "//") {
+		return "sportarr://" + imageURL
+	}
+	image, err := url.Parse(imageURL)
+	if err != nil || image.Scheme == "" || image.Host == "" || image.User != nil {
+		return imageURL
+	}
+	if !sameSportarrOrigin(base, image) {
+		return imageURL
+	}
+
+	basePath := strings.TrimRight(base.Path, "/")
+	if basePath != "" && image.Path != basePath && !strings.HasPrefix(image.Path, basePath+"/") {
+		return imageURL
+	}
+
+	canonicalPath := image.EscapedPath()
+	baseEscapedPath := strings.TrimRight(base.EscapedPath(), "/")
+	if baseEscapedPath != "" && strings.HasPrefix(canonicalPath, baseEscapedPath) {
+		canonicalPath = strings.TrimPrefix(canonicalPath, baseEscapedPath)
+	}
+	if image.ForceQuery || image.RawQuery != "" {
+		canonicalPath += "?" + image.RawQuery
+	}
+	if image.Fragment != "" {
+		canonicalPath += "#" + image.Fragment
+	}
+	return "sportarr://" + canonicalPath
+}
+
+func sameSportarrOrigin(base, image *url.URL) bool {
+	return strings.EqualFold(base.Scheme, image.Scheme) &&
+		strings.EqualFold(base.Hostname(), image.Hostname()) &&
+		effectivePort(base) == effectivePort(image)
+}
+
+func effectivePort(value *url.URL) string {
+	if port := value.Port(); port != "" {
+		return port
+	}
+	switch strings.ToLower(value.Scheme) {
+	case "http":
+		return "80"
+	case "https":
+		return "443"
+	default:
+		return ""
+	}
 }
 
 func resolveOneSportarrPath(baseURL, path, _ string) string {
@@ -39,6 +89,9 @@ func resolveOneSportarrPath(baseURL, path, _ string) string {
 	}
 	if strings.HasPrefix(path, "sportarr://") {
 		return baseURL + strings.TrimPrefix(path, "sportarr://")
+	}
+	if strings.HasPrefix(path, "/") && !strings.HasPrefix(path, "//") {
+		return baseURL + path
 	}
 	return path
 }
@@ -322,6 +375,7 @@ func metadataItemFromResult(result *metadata.MetadataResult, itemType, baseURL s
 		OriginalTitle:    result.OriginalTitle,
 		SortTitle:        result.SortTitle,
 		Year:             int32(result.Year),
+		ReleaseDate:      result.ReleaseDate,
 		Overview:         result.Overview,
 		Tagline:          result.Tagline,
 		Runtime:          int32(result.Runtime),
