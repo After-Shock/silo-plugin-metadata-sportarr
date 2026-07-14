@@ -12,6 +12,7 @@ import (
 	publicmanifest "github.com/Silo-Server/silo-plugin-sdk/pkg/pluginsdk/manifest"
 	"github.com/Silo-Server/silo-plugin-sportarr/metadata"
 	"github.com/Silo-Server/silo-plugin-sportarr/provider"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 // Sportarr is a specialist provider: sports leagues rendered as TV shows. It
@@ -80,6 +81,24 @@ func TestManifestLoads(t *testing.T) {
 	}
 	if m.Capabilities[0].Type != "metadata_provider.v1" {
 		t.Errorf("expected capability type metadata_provider.v1, got %s", m.Capabilities[0].Type)
+	}
+}
+
+func TestConfigureMarksExplicitMovieBaseURL(t *testing.T) {
+	configured, err := structpb.NewStruct(map[string]any{"base_url": "http://sportarr:1867/"})
+	if err != nil {
+		t.Fatalf("make configured base URL: %v", err)
+	}
+
+	runtime := &runtimeServer{}
+	if _, err := runtime.Configure(context.Background(), &pluginv1.ConfigureRequest{Config: []*pluginv1.ConfigEntry{{Key: "sportarr", Value: configured}}}); err != nil {
+		t.Fatalf("configure: %v", err)
+	}
+	if !runtime.movieBaseURLConfigured {
+		t.Fatal("explicit local Movie base URL was not recorded")
+	}
+	if got, want := runtime.baseURL, "http://sportarr:1867"; got != want {
+		t.Fatalf("configured base URL = %q, want %q", got, want)
 	}
 }
 

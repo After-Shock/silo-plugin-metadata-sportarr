@@ -102,6 +102,7 @@ type runtimeServer struct {
 	manifest *pluginv1.PluginManifest
 	provider *provider.Provider
 	baseURL  string
+	movieBaseURLConfigured bool
 }
 
 type metadataServer struct {
@@ -118,6 +119,7 @@ func (s *runtimeServer) GetManifest(context.Context, *pluginv1.GetManifestReques
 
 func (s *runtimeServer) Configure(_ context.Context, req *pluginv1.ConfigureRequest) (*pluginv1.ConfigureResponse, error) {
 	baseURL := defaultBaseURL
+	movieBaseURLConfigured := false
 
 	for _, entry := range req.GetConfig() {
 		if entry.GetKey() != "sportarr" {
@@ -125,13 +127,17 @@ func (s *runtimeServer) Configure(_ context.Context, req *pluginv1.ConfigureRequ
 		}
 		if val := entry.GetValue(); val != nil {
 			m := val.AsMap()
-			if u, ok := m["base_url"].(string); ok && u != "" {
-				baseURL = strings.TrimRight(u, "/")
+			if u, ok := m["base_url"].(string); ok {
+				if u = strings.TrimSpace(u); u != "" {
+					baseURL = strings.TrimRight(u, "/")
+					movieBaseURLConfigured = true
+				}
 			}
 		}
 	}
 
 	s.baseURL = baseURL
+	s.movieBaseURLConfigured = movieBaseURLConfigured
 	s.provider = provider.NewProvider(baseURL)
 	return &pluginv1.ConfigureResponse{}, nil
 }
