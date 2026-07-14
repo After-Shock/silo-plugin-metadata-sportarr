@@ -351,6 +351,8 @@ func (c *Client) ResolveImageRedirect(ctx context.Context, path string) (string,
 func isGloballyRoutableIP(ip net.IP) bool {
 	if ip4 := ip.To4(); ip4 != nil {
 		ip = ip4
+	} else if !globallyRoutableIPv6Range.Contains(ip) {
+		return false
 	}
 	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
 		return false
@@ -375,13 +377,17 @@ var nonGlobalIPRanges = []*net.IPNet{
 	mustParseCIDR("64:ff9b:1::/48"),
 	mustParseCIDR("100::/64"),
 	mustParseCIDR("100:0:0:1::/64"),
+	mustParseCIDR("2001::/23"),
 	mustParseCIDR("2001:2::/48"),
 	mustParseCIDR("2001:10::/28"),
 	mustParseCIDR("2001:20::/28"),
 	mustParseCIDR("2001:30::/28"),
+	mustParseCIDR("2002::/16"),
 	mustParseCIDR("2001:db8::/32"),
 	mustParseCIDR("3fff::/20"),
 }
+
+var globallyRoutableIPv6Range = mustParseCIDR("2000::/3")
 
 func mustParseCIDR(cidr string) *net.IPNet {
 	_, network, err := net.ParseCIDR(cidr)
