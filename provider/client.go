@@ -83,6 +83,12 @@ func (c *Client) localMovieAPIConfigured() bool {
 	return true
 }
 
+// SetHTTPClient replaces the request client. It is primarily useful for
+// callers that need to control transports in tests.
+func (c *Client) SetHTTPClient(httpClient *http.Client) {
+	c.httpClient = httpClient
+}
+
 func (c *Client) doGet(ctx context.Context, path string, dest any) error {
 	if err := c.limiter.Wait(ctx); err != nil {
 		return err
@@ -366,7 +372,15 @@ var nonGlobalIPRanges = []*net.IPNet{
 	mustParseCIDR("198.51.100.0/24"),
 	mustParseCIDR("203.0.113.0/24"),
 	mustParseCIDR("240.0.0.0/4"),
+	mustParseCIDR("64:ff9b:1::/48"),
+	mustParseCIDR("100::/64"),
+	mustParseCIDR("100:0:0:1::/64"),
+	mustParseCIDR("2001:2::/48"),
+	mustParseCIDR("2001:10::/28"),
+	mustParseCIDR("2001:20::/28"),
+	mustParseCIDR("2001:30::/28"),
 	mustParseCIDR("2001:db8::/32"),
+	mustParseCIDR("3fff::/20"),
 }
 
 func mustParseCIDR(cidr string) *net.IPNet {
