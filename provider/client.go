@@ -370,6 +370,7 @@ var nonGlobalIPRanges = []*net.IPNet{
 	mustParseCIDR("100.64.0.0/10"),
 	mustParseCIDR("192.0.0.0/24"),
 	mustParseCIDR("192.0.2.0/24"),
+	mustParseCIDR("192.88.99.0/24"),
 	mustParseCIDR("198.18.0.0/15"),
 	mustParseCIDR("198.51.100.0/24"),
 	mustParseCIDR("203.0.113.0/24"),
