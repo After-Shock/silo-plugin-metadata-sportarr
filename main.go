@@ -305,17 +305,35 @@ func (s *metadataServer) GetImages(ctx context.Context, req *pluginv1.GetImagesR
 	return response, nil
 }
 
-func (s *metadataServer) ResolveImageURL(_ context.Context, req *pluginv1.ResolveImageURLRequest) (*pluginv1.ResolveImageURLResponse, error) {
-	resolved := resolveOneSportarrPath(s.runtime.baseURL, req.GetPath(), req.GetVariant())
+func (s *metadataServer) ResolveImageURL(ctx context.Context, req *pluginv1.ResolveImageURLRequest) (*pluginv1.ResolveImageURLResponse, error) {
+	resolved := s.resolveImageURL(ctx, req.GetPath(), req.GetVariant())
 	return &pluginv1.ResolveImageURLResponse{Url: resolved}, nil
 }
 
-func (s *metadataServer) ResolveImageURLs(_ context.Context, req *pluginv1.ResolveImageURLsRequest) (*pluginv1.ResolveImageURLsResponse, error) {
+func (s *metadataServer) ResolveImageURLs(ctx context.Context, req *pluginv1.ResolveImageURLsRequest) (*pluginv1.ResolveImageURLsResponse, error) {
 	urls := make(map[string]string, len(req.GetPaths()))
 	for _, path := range req.GetPaths() {
-		urls[path] = resolveOneSportarrPath(s.runtime.baseURL, path, req.GetVariant())
+		urls[path] = s.resolveImageURL(ctx, path, req.GetVariant())
 	}
 	return &pluginv1.ResolveImageURLsResponse{Urls: urls}, nil
+}
+
+func (s *metadataServer) resolveImageURL(ctx context.Context, path, variant string) string {
+	if !strings.HasPrefix(path, "/api/") {
+		return resolveOneSportarrPath(s.runtime.baseURL, path, variant)
+	}
+	if !s.runtime.movieBaseURLConfigured {
+		return ""
+	}
+	p, err := s.runtime.providerForRequest()
+	if err != nil {
+		return ""
+	}
+	resolved, err := p.ResolveImageRedirect(ctx, path)
+	if err != nil {
+		return ""
+	}
+	return resolved
 }
 
 func main() {

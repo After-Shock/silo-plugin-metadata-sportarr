@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -25,6 +26,7 @@ type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	limiter    *rate.Limiter
+	lookupIP   func(context.Context, string) ([]net.IP, error)
 }
 
 // ErrNotFound reports a 404 from Sportarr without treating other 4xx responses
@@ -45,6 +47,9 @@ func NewClient(rateLimit int) *Client {
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    defaultBaseURL,
 		limiter:    rate.NewLimiter(rate.Limit(rateLimit), rateLimit),
+		lookupIP: func(_ context.Context, host string) ([]net.IP, error) {
+			return net.LookupIP(host)
+		},
 	}
 }
 
@@ -262,4 +267,112 @@ func (c *Client) GetEntityImagesBatch(ctx context.Context, entityType string, en
 		}
 	}
 	return out
+}
+
+// ResolveImageRedirect returns the public image target supplied by Sportarr's
+// configured local API. It never follows the redirect itself.
+func (c *Client) ResolveImageRedirect(ctx context.Context, path string) (string, error) {
+	if !strings.HasPrefix(path, "/api/") {
+		return "", fmt.Errorf("sportarr: image redirect path must start with /api/")
+	}
+	if err := c.limiter.Wait(ctx); err != nil {
+		return "", err
+	}
+
+	endpoint, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("sportarr: parse base URL: %w", err)
+	}
+	imagePath, err := url.Parse(path)
+	if err != nil || imagePath.IsAbs() || imagePath.Host != "" {
+		return "", fmt.Errorf("sportarr: invalid image redirect path")
+	}
+	reqURL := endpoint.ResolveReference(imagePath)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL.String(), nil)
+	if err != nil {
+		return "", fmt.Errorf("sportarr: create image redirect request: %w", err)
+	}
+
+	client := *c.httpClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("sportarr: image redirect request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < http.StatusMultipleChoices || resp.StatusCode >= http.StatusBadRequest {
+		return "", fmt.Errorf("sportarr: image redirect returned HTTP %d", resp.StatusCode)
+	}
+
+	location := resp.Header.Get("Location")
+	target, err := url.Parse(location)
+	if err != nil || !target.IsAbs() || target.Scheme != "https" || target.Host == "" || target.User != nil {
+		return "", fmt.Errorf("sportarr: image redirect location is not a public HTTPS URL")
+	}
+	if port := target.Port(); port != "" {
+		portNumber, err := strconv.Atoi(port)
+		if err != nil || portNumber < 1 || portNumber > 65535 {
+			return "", fmt.Errorf("sportarr: image redirect location has invalid port")
+		}
+	}
+
+	host := target.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("sportarr: image redirect location has no host")
+	}
+	if literal := net.ParseIP(host); literal != nil {
+		if !isGloballyRoutableIP(literal) {
+			return "", fmt.Errorf("sportarr: image redirect target is not globally routable")
+		}
+		return target.String(), nil
+	}
+
+	addresses, err := c.lookupIP(ctx, host)
+	if err != nil || len(addresses) == 0 {
+		return "", fmt.Errorf("sportarr: image redirect target lookup failed")
+	}
+	for _, address := range addresses {
+		if !isGloballyRoutableIP(address) {
+			return "", fmt.Errorf("sportarr: image redirect target is not globally routable")
+		}
+	}
+	return target.String(), nil
+}
+
+func isGloballyRoutableIP(ip net.IP) bool {
+	if ip4 := ip.To4(); ip4 != nil {
+		ip = ip4
+	}
+	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() || ip.IsUnspecified() {
+		return false
+	}
+	for _, blocked := range nonGlobalIPRanges {
+		if blocked.Contains(ip) {
+			return false
+		}
+	}
+	return true
+}
+
+var nonGlobalIPRanges = []*net.IPNet{
+	mustParseCIDR("0.0.0.0/8"),
+	mustParseCIDR("100.64.0.0/10"),
+	mustParseCIDR("192.0.0.0/24"),
+	mustParseCIDR("192.0.2.0/24"),
+	mustParseCIDR("198.18.0.0/15"),
+	mustParseCIDR("198.51.100.0/24"),
+	mustParseCIDR("203.0.113.0/24"),
+	mustParseCIDR("240.0.0.0/4"),
+	mustParseCIDR("2001:db8::/32"),
+}
+
+func mustParseCIDR(cidr string) *net.IPNet {
+	_, network, err := net.ParseCIDR(cidr)
+	if err != nil {
+		panic(err)
+	}
+	return network
 }

@@ -29,6 +29,10 @@ func (p *Provider) Slug() string       { return "sportarr" }
 func (p *Provider) Name() string       { return "Sportarr" }
 func (p *Provider) ForTypes() []string { return []string{"series", "movie"} }
 
+func (p *Provider) ResolveImageRedirect(ctx context.Context, path string) (string, error) {
+	return p.client.ResolveImageRedirect(ctx, path)
+}
+
 func mapImageType(t string) (metadata.ImageType, bool) {
 	switch t {
 	case "poster":
