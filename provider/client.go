@@ -47,8 +47,8 @@ func NewClient(rateLimit int) *Client {
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    defaultBaseURL,
 		limiter:    rate.NewLimiter(rate.Limit(rateLimit), rateLimit),
-		lookupIP: func(_ context.Context, host string) ([]net.IP, error) {
-			return net.LookupIP(host)
+		lookupIP: func(ctx context.Context, host string) ([]net.IP, error) {
+			return net.DefaultResolver.LookupIP(ctx, "ip", host)
 		},
 	}
 }
